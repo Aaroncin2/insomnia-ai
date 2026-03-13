@@ -247,12 +247,26 @@ function stopCamera() {
 }
 
 // ── Detection Loop ──────────────────────────────────
+let backgroundTimerId = null;
+const BACKGROUND_FPS = 10; // slower in background to save CPU
+
+function scheduleNextFrame() {
+  if (!isRunning) return;
+  if (document.hidden) {
+    // Tab is hidden: use setTimeout (not throttled by browser)
+    backgroundTimerId = setTimeout(detectionLoop, 1000 / BACKGROUND_FPS);
+  } else {
+    // Tab is visible: use requestAnimationFrame (smooth 60fps)
+    animationId = requestAnimationFrame(detectionLoop);
+  }
+}
+
 function detectionLoop() {
   const els = getElements();
   const video = els.videoFeed;
   const canvas = els.overlayCanvas;
   if (!isRunning || video.readyState < 2) {
-    animationId = requestAnimationFrame(detectionLoop);
+    scheduleNextFrame();
     return;
   }
 
@@ -280,17 +294,22 @@ function detectionLoop() {
     if (distraction.stateChanged && distraction.state === 'distracted') triggerAlert('distracted');
     if (drowsiness.yawnDetected) triggerAlert('yawn');
 
-    drawLandmarks(canvas, lm, overallState);
-    updateMetrics({ ear: drowsiness.ear, mar: drowsiness.mar, yaw: distraction.yaw, pitch: distraction.pitch, eyesClosed: drowsiness.eyesClosed });
-    updateState(overallState === 'sleeping' ? 'sleeping' : overallState);
-    updateStateTimer();
-    updateStats(getAlertCounts());
+    // Only update visual UI if tab is visible
+    if (!document.hidden) {
+      drawLandmarks(canvas, lm, overallState);
+      updateMetrics({ ear: drowsiness.ear, mar: drowsiness.mar, yaw: distraction.yaw, pitch: distraction.pitch, eyesClosed: drowsiness.eyesClosed });
+      updateState(overallState === 'sleeping' ? 'sleeping' : overallState);
+      updateStateTimer();
+      updateStats(getAlertCounts());
+    }
   } else {
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!document.hidden) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
   }
 
-  animationId = requestAnimationFrame(detectionLoop);
+  scheduleNextFrame();
 }
 
 // ── Start / Stop ────────────────────────────────────
@@ -330,6 +349,8 @@ async function stopDetection() {
   const els = getElements();
   isRunning = false;
   if (animationId) cancelAnimationFrame(animationId);
+  if (backgroundTimerId) clearTimeout(backgroundTimerId);
+  backgroundTimerId = null;
   stopCamera();
   setConnectionStatus(false);
   if (els.startBtn) els.startBtn.style.display = 'flex';
