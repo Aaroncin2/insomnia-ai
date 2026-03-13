@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Sistema de detección de somnolencia y distracción en tiempo real usando inteligencia artificial y visión por computadora" />
+  <title>Insomnia AI - Detección de Somnolencia y Distracción</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- ═══════════════════════════════════════════
+         AUTH SCREEN
+         ═══════════════════════════════════════════ -->
+    <div id="authScreen" class="auth-screen">
+      <div class="auth-bg-glow"></div>
+      <div class="auth-container">
+        <div class="auth-brand">
+          <span class="auth-logo-icon">🌙</span>
+          <h1>Insomnia <span class="ai-badge">AI</span></h1>
+          <p>Detección inteligente de somnolencia y distracción</p>
+        </div>
+
+        <!-- Login Form -->
+        <form id="loginForm" class="auth-form">
+          <h2>Iniciar Sesión</h2>
+          <div class="form-group">
+            <label for="loginEmail">Email</label>
+            <input type="email" id="loginEmail" required placeholder="tu@email.com" autocomplete="email" />
+          </div>
+          <div class="form-group">
+            <label for="loginPassword">Contraseña</label>
+            <input type="password" id="loginPassword" required placeholder="••••••••" autocomplete="current-password" />
+          </div>
+          <button type="submit" class="auth-btn" id="loginBtn">
+            <span class="auth-btn-text">Iniciar Sesión</span>
+            <span class="auth-btn-loading" style="display:none;">⏳ Cargando...</span>
+          </button>
+          <p class="auth-switch">¿No tienes cuenta? <a href="#" id="showRegister">Regístrate aquí</a></p>
+          <div class="auth-error" id="loginError"></div>
+        </form>
+
+        <!-- Register Form -->
+        <form id="registerForm" class="auth-form" style="display:none;">
+          <h2>Crear Cuenta</h2>
+          <div class="form-group">
+            <label for="registerName">Nombre completo</label>
+            <input type="text" id="registerName" required placeholder="Tu nombre" autocomplete="name" />
+          </div>
+          <div class="form-group">
+            <label for="registerEmail">Email</label>
+            <input type="email" id="registerEmail" required placeholder="tu@email.com" autocomplete="email" />
+          </div>
+          <div class="form-group">
+            <label for="registerPassword">Contraseña</label>
+            <input type="password" id="registerPassword" required minlength="6" placeholder="Mínimo 6 caracteres" autocomplete="new-password" />
+          </div>
+          <button type="submit" class="auth-btn" id="registerBtn">
+            <span class="auth-btn-text">Crear Cuenta</span>
+            <span class="auth-btn-loading" style="display:none;">⏳ Creando...</span>
+          </button>
+          <p class="auth-switch">¿Ya tienes cuenta? <a href="#" id="showLogin">Inicia sesión</a></p>
+          <div class="auth-error" id="registerError"></div>
+          <div class="auth-success" id="registerSuccess"></div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════
+         APP CONTENT (visible after login)
+         ═══════════════════════════════════════════ -->
+    <div id="appContent" style="display:none;">
+
+      <!-- Header -->
+      <header id="header">
+        <div class="header-left">
+          <div class="logo">
+            <span class="logo-icon">🌙</span>
+            <h1>Insomnia <span class="ai-badge">AI</span></h1>
+          </div>
+        </div>
+        <nav class="header-nav" id="headerNav">
+          <button class="nav-tab active" data-view="detection" id="navDetection">
+            <span class="nav-icon">📹</span> Detección
+          </button>
+          <button class="nav-tab" data-view="reports" id="navReports">
+            <span class="nav-icon">📊</span> Reportes
+          </button>
+        </nav>
+        <div class="header-right">
+          <div class="user-pill" id="userPill">
+            <span class="user-avatar" id="userAvatar">U</span>
+            <span class="user-name" id="userName">Usuario</span>
+          </div>
+          <button id="logoutBtn" class="icon-btn" title="Cerrar Sesión">🚪</button>
+          <div class="status-pill" id="connectionStatus">
+            <span class="status-dot"></span>
+            <span class="status-text">Desconectado</span>
+          </div>
+          <button id="toggleSettingsBtn" class="icon-btn" title="Configuración">⚙️</button>
+        </div>
+      </header>
+
+      <!-- ─── DETECTION VIEW ─── -->
+      <main id="detectionView" class="view-container">
+        <!-- Left: Camera Feed -->
+        <section class="camera-section">
+          <div class="camera-container" id="cameraContainer">
+            <video id="videoFeed" autoplay playsinline muted></video>
+            <canvas id="overlayCanvas"></canvas>
+
+            <!-- State overlay -->
+            <div class="state-overlay" id="stateOverlay">
+              <div class="state-overlay-content">
+                <span class="state-overlay-icon" id="stateOverlayIcon">⏳</span>
+                <span class="state-overlay-text" id="stateOverlayText">Iniciando cámara...</span>
+              </div>
+            </div>
+
+            <!-- Alert flash overlay -->
+            <div class="alert-flash" id="alertFlash"></div>
+
+            <!-- Camera controls -->
+            <div class="camera-controls">
+              <button id="startBtn" class="ctrl-btn primary-btn">
+                <span>▶</span> Iniciar Detección
+              </button>
+              <button id="stopBtn" class="ctrl-btn danger-btn" style="display:none;">
+                <span>⏹</span> Detener
+              </button>
+            </div>
+          </div>
+
+          <!-- Real-time metrics strip -->
+          <div class="metrics-strip" id="metricsStrip">
+            <div class="metric-card" id="earMetric">
+              <span class="metric-label">👁️ EAR</span>
+              <span class="metric-value" id="earValue">--</span>
+              <div class="metric-bar"><div class="metric-bar-fill" id="earBar"></div></div>
+            </div>
+            <div class="metric-card" id="marMetric">
+              <span class="metric-label">👄 MAR</span>
+              <span class="metric-value" id="marValue">--</span>
+              <div class="metric-bar"><div class="metric-bar-fill" id="marBar"></div></div>
+            </div>
+            <div class="metric-card" id="yawMetric">
+              <span class="metric-label">↔️ Yaw</span>
+              <span class="metric-value" id="yawValue">--</span>
+              <div class="metric-bar"><div class="metric-bar-fill" id="yawBar"></div></div>
+            </div>
+            <div class="metric-card" id="pitchMetric">
+              <span class="metric-label">↕️ Pitch</span>
+              <span class="metric-value" id="pitchValue">--</span>
+              <div class="metric-bar"><div class="metric-bar-fill" id="pitchBar"></div></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Right: Dashboard sidebar -->
+        <aside class="dashboard-section">
+          <!-- Current State Card -->
+          <div class="card state-card" id="stateCard">
+            <div class="state-indicator" id="stateIndicator">
+              <span class="state-emoji" id="stateEmoji">😐</span>
+              <div class="state-info">
+                <h2 id="stateTitle">Sin datos</h2>
+                <p id="stateDescription">Inicia la detección para monitorear</p>
+              </div>
+            </div>
+            <div class="state-timer" id="stateTimer">
+              <span class="timer-label">Tiempo en estado actual</span>
+              <span class="timer-value" id="timerValue">00:00</span>
+            </div>
+          </div>
+
+          <!-- Session Stats -->
+          <div class="card stats-card">
+            <h3>📊 Estadísticas de Sesión</h3>
+            <div class="stats-grid">
+              <div class="stat-item">
+                <span class="stat-value" id="totalAlerts">0</span>
+                <span class="stat-label">Alertas totales</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-value" id="drowsinessCount">0</span>
+                <span class="stat-label">Somnolencia</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-value" id="distractionCount">0</span>
+                <span class="stat-label">Distracciones</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-value" id="sessionTime">00:00</span>
+                <span class="stat-label">Tiempo activo</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Alert History -->
+          <div class="card history-card">
+            <h3>🕐 Historial de Alertas</h3>
+            <div class="alert-list" id="alertList">
+              <div class="alert-empty">
+                <span>📋</span>
+                <p>No hay alertas aún</p>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </main>
+
+      <!-- ─── REPORTS VIEW ─── -->
+      <div id="reportsView" class="view-container reports-view" style="display:none;">
+        <!-- Loading -->
+        <div class="dashboard-loading" id="dashboardLoading" style="display:none;">
+          <div class="dashboard-spinner"></div>
+          <p>Cargando reportes...</p>
+        </div>
+
+        <div id="dashboardContent">
+          <!-- Reports header -->
+          <div class="reports-header">
+            <h2>📊 Dashboard Analítico</h2>
+            <div class="date-filter" id="dateFilter">
+              <button class="filter-btn active" data-days="7">7 días</button>
+              <button class="filter-btn" data-days="14">14 días</button>
+              <button class="filter-btn" data-days="30">30 días</button>
+            </div>
+          </div>
+
+          <!-- KPIs -->
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <div class="kpi-icon-wrap red">🚨</div>
+              <div class="kpi-info">
+                <span class="kpi-value" id="kpiTotalAlerts">0</span>
+                <span class="kpi-label">Alertas Totales</span>
+              </div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-icon-wrap blue">📋</div>
+              <div class="kpi-info">
+                <span class="kpi-value" id="kpiTotalSessions">0</span>
+                <span class="kpi-label">Sesiones</span>
+              </div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-icon-wrap green">⏱️</div>
+              <div class="kpi-info">
+                <span class="kpi-value" id="kpiTotalTime">0h 0m</span>
+                <span class="kpi-label">Tiempo Monitoreo</span>
+              </div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-icon-wrap purple">📈</div>
+              <div class="kpi-info">
+                <span class="kpi-value" id="kpiAvgAlerts">0</span>
+                <span class="kpi-label">Promedio / Sesión</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Charts -->
+          <div class="charts-grid">
+            <div class="chart-card">
+              <h3>📊 Frecuencia por Tipo de Alerta</h3>
+              <div class="chart-container">
+                <canvas id="frequencyChart"></canvas>
+              </div>
+            </div>
+            <div class="chart-card">
+              <h3>📈 Tendencia Diaria</h3>
+              <div class="chart-container">
+                <canvas id="trendChart"></canvas>
+              </div>
+            </div>
+            <div class="chart-card">
+              <h3>🍩 Distribución de Alertas</h3>
+              <div class="chart-container">
+                <canvas id="distributionChart"></canvas>
+              </div>
+            </div>
+            <div class="chart-card">
+              <h3>📋 Alertas por Sesión</h3>
+              <div class="chart-container">
+                <canvas id="sessionChart"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sessions Table -->
+          <div class="chart-card sessions-table-card">
+            <h3>🗂️ Historial de Sesiones</h3>
+            <div class="sessions-table-container">
+              <table class="sessions-table" id="sessionsTable">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Duración</th>
+                    <th>Alertas</th>
+                    <th>Somnolencia</th>
+                    <th>Distracción</th>
+                    <th>Bostezos</th>
+                  </tr>
+                </thead>
+                <tbody id="sessionsTableBody">
+                  <tr><td colspan="6" class="table-empty">No hay sesiones registradas</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Settings Panel (Sliding) -->
+      <div class="settings-overlay" id="settingsOverlay">
+        <div class="settings-panel" id="settingsPanel">
+          <div class="settings-header">
+            <h3>⚙️ Configuración</h3>
+            <button id="closeSettingsBtn" class="icon-btn">✕</button>
+          </div>
+          <div class="settings-body">
+            <div class="setting-group">
+              <h4>👁️ Detección de Somnolencia</h4>
+              <div class="setting-row">
+                <label for="earThreshold">Umbral EAR (ojos cerrados)</label>
+                <div class="setting-control">
+                  <input type="range" id="earThreshold" min="0.1" max="0.4" step="0.01" value="0.25" />
+                  <span class="setting-value" id="earThresholdValue">0.25</span>
+                </div>
+              </div>
+              <div class="setting-row">
+                <label for="earFrames">Frames consecutivos</label>
+                <div class="setting-control">
+                  <input type="range" id="earFrames" min="5" max="60" step="1" value="20" />
+                  <span class="setting-value" id="earFramesValue">20</span>
+                </div>
+              </div>
+              <div class="setting-row">
+                <label for="marThreshold">Umbral MAR (bostezo)</label>
+                <div class="setting-control">
+                  <input type="range" id="marThreshold" min="0.3" max="1.0" step="0.05" value="0.6" />
+                  <span class="setting-value" id="marThresholdValue">0.60</span>
+                </div>
+              </div>
+            </div>
+            <div class="setting-group">
+              <h4>🔀 Detección de Distracción</h4>
+              <div class="setting-row">
+                <label for="yawThreshold">Umbral Yaw (giro lateral °)</label>
+                <div class="setting-control">
+                  <input type="range" id="yawThreshold" min="10" max="45" step="1" value="25" />
+                  <span class="setting-value" id="yawThresholdValue">25°</span>
+                </div>
+              </div>
+              <div class="setting-row">
+                <label for="pitchThreshold">Umbral Pitch (inclinación °)</label>
+                <div class="setting-control">
+                  <input type="range" id="pitchThreshold" min="10" max="45" step="1" value="20" />
+                  <span class="setting-value" id="pitchThresholdValue">20°</span>
+                </div>
+              </div>
+              <div class="setting-row">
+                <label for="distractionFrames">Frames consecutivos</label>
+                <div class="setting-control">
+                  <input type="range" id="distractionFrames" min="5" max="60" step="1" value="15" />
+                  <span class="setting-value" id="distractionFramesValue">15</span>
+                </div>
+              </div>
+            </div>
+            <div class="setting-group">
+              <h4>🔊 Alertas</h4>
+              <div class="setting-row">
+                <label for="soundEnabled">Sonido habilitado</label>
+                <div class="setting-control">
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="soundEnabled" checked />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+              <div class="setting-row">
+                <label for="alertVolume">Volumen</label>
+                <div class="setting-control">
+                  <input type="range" id="alertVolume" min="0" max="1" step="0.1" value="0.7" />
+                  <span class="setting-value" id="alertVolumeValue">70%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
