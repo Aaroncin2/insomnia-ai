@@ -4,10 +4,10 @@
  */
 
 // Face mesh connections for drawing (simplified – contours)
-const FACE_OVAL = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109,10];
-const LEFT_EYE_IDX = [33,7,163,144,145,153,154,155,133,173,157,158,159,160,161,246,33];
-const RIGHT_EYE_IDX = [362,382,381,380,374,373,390,249,263,466,388,387,386,385,384,398,362];
-const LIPS_IDX = [61,146,91,181,84,17,314,405,321,375,291,409,270,269,267,0,37,39,40,185,61];
+const FACE_OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109, 10];
+const LEFT_EYE_IDX = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246, 33];
+const RIGHT_EYE_IDX = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398, 362];
+const LIPS_IDX = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 409, 270, 269, 267, 0, 37, 39, 40, 185, 61];
 
 const els = {};
 let stateStartTime = Date.now();
@@ -16,17 +16,17 @@ let sessionInterval = null;
 
 export function initUI() {
   // Cache DOM refs
-  const ids = ['videoFeed','overlayCanvas','stateOverlay','stateOverlayIcon','stateOverlayText',
-    'alertFlash','startBtn','stopBtn','connectionStatus',
-    'earValue','marValue','yawValue','pitchValue',
-    'earBar','marBar','yawBar','pitchBar',
-    'earMetric','marMetric','yawMetric','pitchMetric',
-    'stateCard','stateEmoji','stateTitle','stateDescription','timerValue',
-    'totalAlerts','drowsinessCount','distractionCount','sessionTime',
-    'alertList','settingsOverlay','toggleSettingsBtn','closeSettingsBtn',
-    'earThreshold','earFrames','marThreshold','yawThreshold','pitchThreshold','distractionFrames',
-    'earThresholdValue','earFramesValue','marThresholdValue','yawThresholdValue','pitchThresholdValue','distractionFramesValue',
-    'soundEnabled','alertVolume','alertVolumeValue'];
+  const ids = ['videoFeed', 'overlayCanvas', 'stateOverlay', 'stateOverlayIcon', 'stateOverlayText',
+    'alertFlash', 'startBtn', 'stopBtn', 'connectionStatus',
+    'earValue', 'marValue', 'yawValue', 'pitchValue',
+    'earBar', 'marBar', 'yawBar', 'pitchBar',
+    'earMetric', 'marMetric', 'yawMetric', 'pitchMetric',
+    'stateCard', 'stateEmoji', 'stateTitle', 'stateDescription', 'timerValue',
+    'totalAlerts', 'drowsinessCount', 'distractionCount', 'sessionTime',
+    'alertList', 'settingsOverlay', 'toggleSettingsBtn', 'closeSettingsBtn',
+    'earThreshold', 'earFrames', 'marThreshold', 'yawThreshold', 'pitchThreshold', 'distractionFrames',
+    'earThresholdValue', 'earFramesValue', 'marThresholdValue', 'yawThresholdValue', 'pitchThresholdValue', 'distractionFramesValue',
+    'soundEnabled', 'alertVolume', 'alertVolumeValue'];
   ids.forEach(id => { els[id] = document.getElementById(id); });
 }
 
@@ -150,10 +150,10 @@ export function updateMetrics(data) {
 }
 
 const stateMap = {
-  alert:      { emoji: '✅', title: 'Alerta',     desc: 'Persona atenta y concentrada', cls: 'normal' },
-  drowsy:     { emoji: '😴', title: 'Somnoliento', desc: 'Se detecta cierre parcial de ojos', cls: 'warning' },
-  sleeping:   { emoji: '🚨', title: '¡Durmiendo!', desc: 'Ojos cerrados prolongadamente', cls: 'danger' },
-  distracted: { emoji: '🔀', title: 'Distraído',   desc: 'Mirada fuera de la pantalla', cls: 'distraction' },
+  alert: { emoji: '✅', title: 'Alerta', desc: 'Persona atenta y concentrada', cls: 'normal' },
+  drowsy: { emoji: '😴', title: 'Somnoliento', desc: 'Se detecta cierre parcial de ojos', cls: 'warning' },
+  sleeping: { emoji: '🚨', title: '¡Durmiendo!', desc: 'Ojos cerrados prolongadamente', cls: 'danger' },
+  distracted: { emoji: '🔀', title: 'Distraído', desc: 'Mirada fuera de la pantalla', cls: 'distraction' },
 };
 
 export function updateState(state) {
@@ -218,5 +218,5 @@ export function stopSessionTimer() {
 
 export function clearAlertList() {
   if (!els.alertList) return;
-  els.alertList.innerHTML = '<div class="alert-empty"><span>📋</span><p>No hay alertas aún</p></div>';
+  els.alertList.innerHTML = '<div class="alert-empty"><span></span><p>No hay alertas aún</p></div>';
 }

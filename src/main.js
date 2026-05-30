@@ -2,6 +2,7 @@
  * Insomnia AI – Main Entry Point
  * Orchestrates auth, camera, face detection, drowsiness/distraction analysis,
  * data persistence, navigation, and UI.
+ * Now includes role-based routing for worker/supervisor/admin.
  */
 import './styles.css';
 import { initFaceDetector, detectFace } from './faceDetector.js';
@@ -9,15 +10,18 @@ import { analyzeDrowsiness, updateDrowsinessConfig, resetDrowsinessState } from 
 import { analyzeDistraction, updateDistractionConfig, resetDistractionState } from './distractionDetector.js';
 import { initAlertSystem, triggerAlert, onAlert, getAlertCounts, resetAlerts, setSoundEnabled, setAlertVolume } from './alertSystem.js';
 import { initUI, getElements, showOverlay, hideOverlay, setConnectionStatus, drawLandmarks, updateMetrics, updateState, resetStateTimer, updateStateTimer, updateStats, addAlertToList, startSessionTimer, stopSessionTimer, clearAlertList } from './ui.js';
-import { login, register, logout, getCurrentUser, getSession, onAuthChange } from './auth.js';
+import { login, register, logout, getCurrentUser, getSession, onAuthChange, getUserProfile, joinGroup, getMyGroups, leaveGroup } from './auth.js';
 import { startSession as startDataSession, endSession as endDataSession, recordEvent } from './dataStore.js';
 import { renderDashboard } from './dashboard.js';
+import { renderSupervisorDashboard, setupSupervisorListeners } from './supervisorDashboard.js';
+import { renderAdminPanel, setupAdminListeners } from './adminPanel.js';
 
 let stream = null;
 let animationId = null;
 let isRunning = false;
 let lastState = 'alert';
 let currentView = 'detection';
+let currentUserRole = 'worker';
 
 // ── Bootstrap ───────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -50,7 +54,7 @@ function showAuth() {
   if (isRunning) stopDetection();
 }
 
-function showApp(user) {
+async function showApp(user) {
   document.getElementById('authScreen').style.display = 'none';
   document.getElementById('appContent').style.display = 'flex';
 
@@ -67,8 +71,65 @@ function showApp(user) {
   if (userNameEl) userNameEl.textContent = name;
   if (userAvatarEl) userAvatarEl.textContent = avatar;
 
-  showOverlay('👁️', 'Pulsa "Iniciar Detección" para comenzar');
-  navigateTo('detection');
+  // Fetch role and adapt UI
+  const profile = await getUserProfile();
+  currentUserRole = profile?.role || 'worker';
+  applyRoleUI(currentUserRole);
+
+  // Default navigation
+  const defaultView = currentUserRole === 'supervisor' ? 'supervisor' : 'detection';
+  navigateTo(defaultView);
+  showOverlay('', 'Pulsa "Iniciar Detección" para comenzar');
+}
+
+/**
+ * Adapt UI elements based on user role.
+ */
+function applyRoleUI(role) {
+  const navDetection = document.getElementById('navDetection');
+  const navReports = document.getElementById('navReports');
+  const navSupervisor = document.getElementById('navSupervisor');
+  const navAdmin = document.getElementById('navAdmin');
+  const roleBadge = document.getElementById('userRoleBadge');
+  const settingsGroupSection = document.getElementById('settingsGroupSection');
+
+  // Role badge
+  const roleLabels = {
+    worker: ' Trabajador',
+    supervisor: ' Supervisor',
+    admin: ' Admin',
+  };
+  const roleBadgeClasses = {
+    worker: 'role-worker',
+    supervisor: 'role-supervisor',
+    admin: 'role-admin',
+  };
+  if (roleBadge) {
+    roleBadge.textContent = roleLabels[role] || roleLabels.worker;
+    roleBadge.className = 'user-role-badge ' + (roleBadgeClasses[role] || '');
+  }
+
+  // Show/hide nav tabs based on role
+  if (navDetection) navDetection.style.display = 'flex';
+  if (navReports) navReports.style.display = 'flex';
+  if (navSupervisor) navSupervisor.style.display = (role === 'supervisor' || role === 'admin') ? 'flex' : 'none';
+  if (navAdmin) navAdmin.style.display = role === 'admin' ? 'flex' : 'none';
+
+  // Show join group section in settings for workers
+  if (settingsGroupSection) {
+    settingsGroupSection.style.display = (role === 'worker') ? 'block' : 'none';
+  }
+
+  // Setup role-specific listeners
+  if (role === 'supervisor' || role === 'admin') {
+    setupSupervisorListeners();
+  }
+  if (role === 'admin') {
+    setupAdminListeners();
+  }
+
+  // Setup join group modal
+  setupJoinGroupListeners();
 }
 
 function setupAuthListeners() {
@@ -180,12 +241,14 @@ function translateAuthError(msg) {
 function setupNavListeners() {
   document.getElementById('navDetection')?.addEventListener('click', () => navigateTo('detection'));
   document.getElementById('navReports')?.addEventListener('click', () => navigateTo('reports'));
+  document.getElementById('navSupervisor')?.addEventListener('click', () => navigateTo('supervisor'));
+  document.getElementById('navAdmin')?.addEventListener('click', () => navigateTo('admin'));
 
-  // Date filter buttons
+  // Date filter buttons (reports view)
   document.getElementById('dateFilter')?.addEventListener('click', (e) => {
     const btn = e.target.closest('.filter-btn');
     if (!btn) return;
-    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('#dateFilter .filter-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     const days = parseInt(btn.dataset.days) || 7;
     renderDashboard(days);
@@ -194,35 +257,149 @@ function setupNavListeners() {
 
 function navigateTo(view) {
   currentView = view;
-  const detectionView = document.getElementById('detectionView');
-  const reportsView = document.getElementById('reportsView');
-  const navDetection = document.getElementById('navDetection');
-  const navReports = document.getElementById('navReports');
+  const views = {
+    detection: document.getElementById('detectionView'),
+    reports: document.getElementById('reportsView'),
+    supervisor: document.getElementById('supervisorView'),
+    admin: document.getElementById('adminView'),
+  };
+  const navs = {
+    detection: document.getElementById('navDetection'),
+    reports: document.getElementById('navReports'),
+    supervisor: document.getElementById('navSupervisor'),
+    admin: document.getElementById('navAdmin'),
+  };
 
-  if (view === 'detection') {
-    if (detectionView) detectionView.style.display = 'grid';
-    if (reportsView) reportsView.style.display = 'none';
-    navDetection?.classList.add('active');
-    navReports?.classList.remove('active');
-  } else {
-    if (detectionView) detectionView.style.display = 'none';
-    if (reportsView) reportsView.style.display = 'block';
-    navDetection?.classList.remove('active');
-    navReports?.classList.add('active');
+  // Hide all views, deactivate all tabs
+  Object.values(views).forEach(v => { if (v) v.style.display = 'none'; });
+  Object.values(navs).forEach(n => { if (n) n.classList.remove('active'); });
+
+  // Show selected
+  if (views[view]) {
+    views[view].style.display = view === 'detection' ? 'grid' : 'block';
+  }
+  if (navs[view]) navs[view].classList.add('active');
+
+  // Trigger data loading
+  if (view === 'reports') {
     renderDashboard(getSelectedDays());
+  } else if (view === 'supervisor') {
+    renderSupervisorDashboard(getSelectedSupervisorDays());
+  } else if (view === 'admin') {
+    renderAdminPanel();
   }
 }
 
 function getSelectedDays() {
-  const active = document.querySelector('.filter-btn.active');
+  const active = document.querySelector('#dateFilter .filter-btn.active');
   return active ? parseInt(active.dataset.days) || 7 : 7;
+}
+
+function getSelectedSupervisorDays() {
+  const active = document.querySelector('#supervisorDateFilter .filter-btn.active');
+  return active ? parseInt(active.dataset.days) || 7 : 7;
+}
+
+// ── Join Group (Workers) ────────────────────────────
+let joinGroupListenersSet = false;
+function setupJoinGroupListeners() {
+  if (joinGroupListenersSet) return;
+  joinGroupListenersSet = true;
+
+  const modal = document.getElementById('joinGroupModal');
+  const openBtn = document.getElementById('openJoinGroupBtn');
+  const closeBtn = document.getElementById('closeJoinGroupModal');
+  const form = document.getElementById('joinGroupForm');
+
+  openBtn?.addEventListener('click', () => {
+    modal?.classList.add('active');
+    loadMyGroups();
+  });
+
+  closeBtn?.addEventListener('click', () => modal?.classList.remove('active'));
+  modal?.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('active'); });
+
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const codeInput = document.getElementById('joinGroupCode');
+    const errorEl = document.getElementById('joinGroupError');
+    const successEl = document.getElementById('joinGroupSuccess');
+    const btn = document.getElementById('joinGroupBtn');
+
+    if (!codeInput?.value.trim()) return;
+
+    if (errorEl) { errorEl.style.display = 'none'; errorEl.textContent = ''; }
+    if (successEl) { successEl.style.display = 'none'; successEl.textContent = ''; }
+    setAuthLoading(btn, true);
+
+    try {
+      const result = await joinGroup(codeInput.value.trim());
+      if (successEl) {
+        successEl.textContent = `✅ Te uniste al grupo "${result.group_name}"`;
+        successEl.style.display = 'block';
+      }
+      codeInput.value = '';
+      loadMyGroups();
+    } catch (err) {
+      if (errorEl) {
+        errorEl.textContent = '❌ ' + err.message;
+        errorEl.style.display = 'block';
+      }
+    } finally {
+      setAuthLoading(btn, false);
+    }
+  });
+}
+
+async function loadMyGroups() {
+  const list = document.getElementById('myGroupsList');
+  if (!list) return;
+
+  try {
+    const groups = await getMyGroups();
+    if (groups.length === 0) {
+      list.innerHTML = '<p class="my-groups-empty">No estás en ningún grupo aún</p>';
+      return;
+    }
+
+    list.innerHTML = groups.map(gm => {
+      const g = gm.groups;
+      return `<div class="my-group-item">
+        <div class="my-group-info">
+          <span class="group-icon"></span>
+          <span class="my-group-name">${g?.name || 'Grupo'}</span>
+        </div>
+        <button class="admin-action-btn danger leave-group-btn" data-group-id="${g?.id}" title="Salir del grupo">✕</button>
+      </div>`;
+    }).join('');
+
+    list.querySelectorAll('.leave-group-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const groupId = btn.dataset.groupId;
+        if (!confirm('¿Seguro que quieres salir de este grupo?')) return;
+        btn.disabled = true;
+        btn.textContent = '';
+        try {
+          await leaveGroup(groupId);
+          loadMyGroups();
+        } catch (err) {
+          console.error('Error leaving group:', err);
+          btn.textContent = '❌';
+          setTimeout(() => { btn.textContent = '✕'; btn.disabled = false; }, 1500);
+        }
+      });
+    });
+  } catch (err) {
+    console.error('Error loading groups:', err);
+    list.innerHTML = '<p class="my-groups-empty">Error cargando grupos</p>';
+  }
 }
 
 // ── Camera ──────────────────────────────────────────
 async function startCamera() {
   const els = getElements();
   try {
-    showOverlay('📷', 'Solicitando acceso a la cámara...');
+    showOverlay('', 'Solicitando acceso a la cámara...');
     stream = await navigator.mediaDevices.getUserMedia({
       video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
       audio: false,
@@ -320,8 +497,8 @@ async function startDetection() {
   const camOk = await startCamera();
   if (!camOk) return;
 
-  showOverlay('🧠', 'Cargando modelo de IA...');
-  const modelOk = await initFaceDetector((msg) => showOverlay('🧠', msg));
+  showOverlay('', 'Cargando modelo de IA...');
+  const modelOk = await initFaceDetector((msg) => showOverlay('', msg));
   if (!modelOk) {
     showOverlay('❌', 'Error cargando modelo de IA');
     return;
@@ -368,7 +545,7 @@ async function stopDetection() {
 
   resetAlerts();
   clearAlertList();
-  showOverlay('👁️', 'Detección detenida');
+  showOverlay('', 'Detección detenida');
   updateState('alert');
   if (els.overlayCanvas) {
     const canvas = els.overlayCanvas;
