@@ -80,7 +80,6 @@ function showNoGroupsMessage() {
     content.style.opacity = '1';
     content.innerHTML = `
       <div class="supervisor-empty">
-        <span class="supervisor-empty-icon">👥</span>
         <h3>Sin grupos asignados</h3>
         <p>El administrador aún no te ha asignado ningún grupo de trabajadores.</p>
       </div>`;
@@ -107,7 +106,7 @@ function renderGroupSelector(groups) {
   container.innerHTML = groups.map(g => `
     <button class="supervisor-group-pill ${g.id === currentGroupId ? 'active' : ''}"
             data-group-id="${g.id}">
-      <span class="group-icon">👥</span>
+      <span class="group-icon"></span>
       <span>${g.name}</span>
       <span class="group-code-mini">${g.code}</span>
     </button>
@@ -413,7 +412,7 @@ async function showWorkerDetail(workerId, workerName) {
   if (!modal) return;
 
   currentWorkerId = workerId;
-  if (title) title.textContent = ` ${workerName}`;
+  if (title) title.textContent = workerName;
   if (content) content.innerHTML = '<div class="admin-loading"> Cargando datos...</div>';
   modal.classList.add('active');
 
@@ -428,7 +427,7 @@ async function showWorkerDetail(workerId, workerName) {
     renderWorkerDetailContent(content, sessions, events, days, workerName);
   } catch (err) {
     console.error('Error loading worker detail:', err);
-    if (content) content.innerHTML = '<div class="admin-empty-state"><span>❌</span><p>Error cargando datos</p></div>';
+    if (content) content.innerHTML = '<div class="admin-empty-state"><p>Error cargando datos</p></div>';
   }
 }
 
@@ -449,28 +448,24 @@ function renderWorkerDetailContent(container, sessions, events, days, workerName
   container.innerHTML = `
     <div class="worker-detail-kpis">
       <div class="kpi-card compact">
-        <div class="kpi-icon-wrap red"></div>
         <div class="kpi-info">
           <span class="kpi-value">${totalAlerts}</span>
           <span class="kpi-label">Alertas</span>
         </div>
       </div>
       <div class="kpi-card compact">
-        <div class="kpi-icon-wrap blue"></div>
         <div class="kpi-info">
           <span class="kpi-value">${totalSessions}</span>
           <span class="kpi-label">Sesiones</span>
         </div>
       </div>
       <div class="kpi-card compact">
-        <div class="kpi-icon-wrap green"></div>
         <div class="kpi-info">
           <span class="kpi-value">${hours}h ${mins}m</span>
           <span class="kpi-label">Tiempo</span>
         </div>
       </div>
       <div class="kpi-card compact">
-        <div class="kpi-icon-wrap purple"></div>
         <div class="kpi-info">
           <span class="kpi-value">${avg}</span>
           <span class="kpi-label">Prom/Sesión</span>

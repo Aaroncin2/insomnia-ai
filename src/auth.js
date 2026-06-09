@@ -1,22 +1,77 @@
 /**
  * Auth Module
- * Handles user authentication via Supabase Auth (email/password).
+ * Handles user authentication via FastAPI backend (JWT).
  * Includes profile management and group membership.
  */
-import { supabase } from './supabaseClient.js';
+
+const API_URL = 'http://127.0.0.1:8000/api';
+
+// ── Token management ────────────────────────────────
+
+function getToken() {
+  return localStorage.getItem('insomnia_token');
+}
+
+function setToken(token) {
+  localStorage.setItem('insomnia_token', token);
+}
+
+function clearToken() {
+  localStorage.removeItem('insomnia_token');
+  localStorage.removeItem('insomnia_user');
+}
+
+function getCachedUser() {
+  const raw = localStorage.getItem('insomnia_user');
+  return raw ? JSON.parse(raw) : null;
+}
+
+function setCachedUser(user) {
+  localStorage.setItem('insomnia_user', JSON.stringify(user));
+}
+
+/** Helper for authenticated API calls. */
+export async function apiFetch(path, options = {}) {
+  const token = getToken();
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(options.headers || {}),
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers,
+  });
+
+  if (res.status === 401) {
+    clearToken();
+    window.location.reload();
+    throw new Error('Sesión expirada');
+  }
+
+  return res;
+}
+
+// ── Auth ─────────────────────────────────────────────
 
 /**
- * Register a new user. Profile is auto-created by DB trigger with role='worker'.
+ * Register a new user.
  */
 export async function register(name, email, password) {
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      data: { full_name: name },
-    },
+  const res = await fetch(`${API_URL}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, full_name: name }),
   });
-  if (error) throw error;
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || 'Error en registro');
+
+  setToken(data.access_token);
+  setCachedUser(data.user);
   return data;
 }
 
@@ -24,11 +79,17 @@ export async function register(name, email, password) {
  * Login with email and password.
  */
 export async function login(email, password) {
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
+  const res = await fetch(`${API_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
   });
-  if (error) throw error;
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || 'Credenciales incorrectas');
+
+  setToken(data.access_token);
+  setCachedUser(data.user);
   return data;
 }
 
@@ -36,62 +97,68 @@ export async function login(email, password) {
  * Logout the current user.
  */
 export async function logout() {
-  const { error } = await supabase.auth.signOut();
-  if (error) throw error;
+  clearToken();
 }
 
 /**
  * Get the currently authenticated user (or null).
  */
 export async function getCurrentUser() {
-  const { data: { user } } = await supabase.auth.getUser();
-  return user;
+  const token = getToken();
+  if (!token) return null;
+
+  try {
+    const res = await apiFetch('/auth/me');
+    if (!res.ok) {
+      clearToken();
+      return null;
+    }
+    const user = await res.json();
+    setCachedUser(user);
+    return user;
+  } catch {
+    clearToken();
+    return null;
+  }
 }
 
 /**
- * Get the current session.
+ * Get the current session (token check).
  */
 export async function getSession() {
-  const { data: { session } } = await supabase.auth.getSession();
-  return session;
+  const token = getToken();
+  if (!token) return null;
+  return { access_token: token };
 }
 
 /**
  * Listen for auth state changes.
- * @param {Function} callback - (event, session) => void
+ * Since we no longer use Supabase realtime, this is a no-op.
+ * The main.js will call getCurrentUser() on load instead.
  */
 export function onAuthChange(callback) {
-  return supabase.auth.onAuthStateChange((event, session) => {
-    callback(event, session);
-  });
+  // No-op — auth state is checked on page load
+  return { data: { subscription: { unsubscribe: () => {} } } };
 }
 
 // ── Profile & Roles ─────────────────────────────────
 
 /**
  * Get the current user's profile (role, full_name, etc).
- * @returns {Object|null} profile
  */
 export async function getUserProfile() {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
   if (!user) return null;
-
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single();
-
-  if (error) {
-    console.error('Error fetching profile:', error);
-    return null;
-  }
-  return data;
+  return {
+    id: user.id,
+    full_name: user.full_name,
+    role: user.role,
+    email: user.email,
+  };
 }
 
 /**
  * Get a specific user's role.
- * @returns {string} 'worker' | 'supervisor' | 'admin'
  */
 export async function getUserRole() {
   const profile = await getUserProfile();
@@ -102,74 +169,47 @@ export async function getUserRole() {
 
 /**
  * Worker joins a group using an invite code.
- * @param {string} code - The group invite code
- * @returns {Object} The group_members entry
  */
 export async function joinGroup(code) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('No authenticated user');
+  const res = await apiFetch('/groups/join', {
+    method: 'POST',
+    body: JSON.stringify({ code: code.toUpperCase().trim() }),
+  });
 
-  // Find the group by code
-  const { data: group, error: groupErr } = await supabase
-    .from('groups')
-    .select('id, name')
-    .eq('code', code.toUpperCase().trim())
-    .single();
-
-  if (groupErr || !group) throw new Error('Código de grupo no encontrado');
-
-  // Check if already a member
-  const { data: existing } = await supabase
-    .from('group_members')
-    .select('id')
-    .eq('group_id', group.id)
-    .eq('user_id', user.id)
-    .single();
-
-  if (existing) throw new Error('Ya eres miembro de este grupo');
-
-  // Join
-  const { data, error } = await supabase
-    .from('group_members')
-    .insert({ group_id: group.id, user_id: user.id })
-    .select()
-    .single();
-
-  if (error) throw error;
-  return { ...data, group_name: group.name };
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || 'Error al unirse al grupo');
+  return data;
 }
 
 /**
  * Worker leaves a group.
  */
 export async function leaveGroup(groupId) {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = getCachedUser();
   if (!user) throw new Error('No authenticated user');
 
-  const { error } = await supabase
-    .from('group_members')
-    .delete()
-    .eq('group_id', groupId)
-    .eq('user_id', user.id);
+  const res = await apiFetch(`/groups/${groupId}/members/${user.id}`, {
+    method: 'DELETE',
+  });
 
-  if (error) throw error;
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(data.detail || 'Error al salir del grupo');
+  }
 }
 
 /**
  * Get groups that the current user belongs to (as a worker).
  */
 export async function getMyGroups() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
+  const res = await apiFetch('/groups/my-groups');
+  if (!res.ok) return [];
 
-  const { data, error } = await supabase
-    .from('group_members')
-    .select('group_id, joined_at, groups(id, name, code, supervisor_id)')
-    .eq('user_id', user.id);
-
-  if (error) {
-    console.error('Error fetching my groups:', error);
-    return [];
-  }
-  return data || [];
+  const groups = await res.json();
+  // Map to the format expected by the frontend
+  return groups.map(g => ({
+    group_id: g.id,
+    joined_at: g.created_at,
+    groups: { id: g.id, name: g.name, code: g.code, supervisor_id: g.supervisor_id },
+  }));
 }

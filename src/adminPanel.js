@@ -60,11 +60,11 @@ function renderUserManagement(profiles) {
       <td class="admin-user-actions">
         ${!isAdmin ? `
           <select class="role-select" data-user-id="${p.id}" id="roleSelect_${p.id}">
-            <option value="worker" ${p.role === 'worker' ? 'selected' : ''}> Trabajador</option>
-            <option value="supervisor" ${p.role === 'supervisor' ? 'selected' : ''}> Supervisor</option>
+            <option value="worker" ${p.role === 'worker' ? 'selected' : ''}>Trabajador</option>
+            <option value="supervisor" ${p.role === 'supervisor' ? 'selected' : ''}>Supervisor</option>
           </select>
-          <button class="admin-action-btn save-role-btn" data-user-id="${p.id}" title="Guardar rol">💾</button>
-        ` : '<span class="admin-protected-badge"> Protegido</span>'}
+          <button class="admin-action-btn save-role-btn" data-user-id="${p.id}" title="Guardar rol">Guardar</button>
+        ` : '<span class="admin-protected-badge">Protegido</span>'}}
       </td>
     </tr>`;
   }).join('');
@@ -82,14 +82,14 @@ function renderUserManagement(profiles) {
 
       try {
         await updateUserRole(userId, newRole);
-        btn.textContent = '✅';
-        setTimeout(() => { btn.textContent = '💾'; btn.disabled = false; }, 1500);
+        btn.textContent = '\u2713';
+        setTimeout(() => { btn.textContent = 'Guardar'; btn.disabled = false; }, 1500);
         // Refresh
         await renderAdminPanel();
       } catch (err) {
         console.error('Error updating role:', err);
-        btn.textContent = '❌';
-        setTimeout(() => { btn.textContent = '💾'; btn.disabled = false; }, 1500);
+        btn.textContent = 'Error';
+        setTimeout(() => { btn.textContent = 'Guardar'; btn.disabled = false; }, 1500);
       }
     });
   });
@@ -97,9 +97,9 @@ function renderUserManagement(profiles) {
 
 function getRoleBadge(role) {
   const map = {
-    admin: '<span class="role-badge role-admin"> Admin</span>',
-    supervisor: '<span class="role-badge role-supervisor"> Supervisor</span>',
-    worker: '<span class="role-badge role-worker"> Trabajador</span>',
+    admin: '<span class="role-badge role-admin">Admin</span>',
+    supervisor: '<span class="role-badge role-supervisor">Supervisor</span>',
+    worker: '<span class="role-badge role-worker">Trabajador</span>',
   };
   return map[role] || map.worker;
 }
@@ -137,8 +137,8 @@ function renderGroupManagement(groups, profiles) {
       </td>
       <td>${supervisorName}</td>
       <td>
-        <button class="admin-action-btn view-members-btn" data-group-id="${g.id}" data-group-name="${g.name}" title="Ver miembros">👁️</button>
-        <button class="admin-action-btn delete-group-btn danger" data-group-id="${g.id}" title="Eliminar grupo">🗑️</button>
+        <button class="admin-action-btn view-members-btn" data-group-id="${g.id}" data-group-name="${g.name}" title="Ver miembros">Ver</button>
+        <button class="admin-action-btn delete-group-btn danger" data-group-id="${g.id}" title="Eliminar grupo">Eliminar</button>
       </td>
     </tr>`;
   }).join('');
@@ -148,7 +148,7 @@ function renderGroupManagement(groups, profiles) {
     el.addEventListener('click', () => {
       navigator.clipboard.writeText(el.dataset.code).then(() => {
         const original = el.textContent;
-        el.textContent = '✅ Copiado';
+        el.textContent = 'Copiado';
         setTimeout(() => { el.textContent = original; }, 1500);
       });
     });
@@ -176,8 +176,8 @@ function renderGroupManagement(groups, profiles) {
         await renderAdminPanel();
       } catch (err) {
         console.error('Error deleting group:', err);
-        btn.textContent = '❌';
-        setTimeout(() => { btn.textContent = '🗑️'; btn.disabled = false; }, 1500);
+        btn.textContent = 'Error';
+        setTimeout(() => { btn.textContent = 'Eliminar'; btn.disabled = false; }, 1500);
       }
     });
   });
@@ -199,7 +199,7 @@ async function showGroupMembers(groupId, groupName) {
     const members = await getGroupMembers(groupId);
 
     if (members.length === 0) {
-      list.innerHTML = '<div class="admin-empty-state"><span></span><p>No hay miembros en este grupo</p></div>';
+      list.innerHTML = '<div class="admin-empty-state"><p>No hay miembros en este grupo</p></div>';
       return;
     }
 
@@ -215,7 +215,7 @@ async function showGroupMembers(groupId, groupName) {
             <div class="group-member-joined">Unido: ${joinDate}</div>
           </div>
         </div>
-        <button class="admin-action-btn danger remove-member-btn" data-user-id="${m.user_id}" data-group-id="${groupId}" title="Remover del grupo">✕</button>
+        <button class="admin-action-btn danger remove-member-btn" data-user-id="${m.user_id}" data-group-id="${groupId}" title="Remover del grupo">Quitar</button>
       </div>`;
     }).join('');
 
@@ -231,14 +231,14 @@ async function showGroupMembers(groupId, groupName) {
           await showGroupMembers(gId, groupName);
         } catch (err) {
           console.error('Error removing member:', err);
-          btn.textContent = '❌';
-          setTimeout(() => { btn.textContent = '✕'; btn.disabled = false; }, 1500);
+          btn.textContent = 'Error';
+          setTimeout(() => { btn.textContent = 'Quitar'; btn.disabled = false; }, 1500);
         }
       });
     });
   } catch (err) {
     console.error('Error loading members:', err);
-    list.innerHTML = '<div class="admin-empty-state"><span>❌</span><p>Error cargando miembros</p></div>';
+    list.innerHTML = '<div class="admin-empty-state"><p>Error cargando miembros</p></div>';
   }
 }
 
@@ -282,7 +282,7 @@ export function setupAdminListeners() {
       console.error('Error creating group:', err);
       alert('Error creando grupo: ' + err.message);
     } finally {
-      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = '➕ Crear Grupo'; }
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Crear Grupo'; }
     }
   });
 }

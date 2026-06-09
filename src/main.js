@@ -11,7 +11,7 @@ import { analyzeDistraction, updateDistractionConfig, resetDistractionState } fr
 import { initAlertSystem, triggerAlert, onAlert, getAlertCounts, resetAlerts, setSoundEnabled, setAlertVolume } from './alertSystem.js';
 import { initUI, getElements, showOverlay, hideOverlay, setConnectionStatus, drawLandmarks, updateMetrics, updateState, resetStateTimer, updateStateTimer, updateStats, addAlertToList, startSessionTimer, stopSessionTimer, clearAlertList } from './ui.js';
 import { login, register, logout, getCurrentUser, getSession, onAuthChange, getUserProfile, joinGroup, getMyGroups, leaveGroup } from './auth.js';
-import { startSession as startDataSession, endSession as endDataSession, recordEvent } from './dataStore.js';
+import { startSession as startDataSession, endSession as endDataSession, recordEvent, recordEventAndCount } from './dataStore.js';
 import { renderDashboard } from './dashboard.js';
 import { renderSupervisorDashboard, setupSupervisorListeners } from './supervisorDashboard.js';
 import { renderAdminPanel, setupAdminListeners } from './adminPanel.js';
@@ -30,20 +30,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Check if already logged in
   const session = await getSession();
-  if (session?.user) {
-    showApp(session.user);
+  if (session) {
+    const user = await getCurrentUser();
+    if (user) {
+      showApp(user);
+    } else {
+      showAuth();
+    }
   } else {
     showAuth();
   }
-
-  // Listen for auth changes
-  onAuthChange((event, session) => {
-    if (event === 'SIGNED_IN' && session?.user) {
-      showApp(session.user);
-    } else if (event === 'SIGNED_OUT') {
-      showAuth();
-    }
-  });
 });
 
 // ── Auth ────────────────────────────────────────────
@@ -64,7 +60,7 @@ async function showApp(user) {
   setupSettingsListeners();
 
   // Update user info in header
-  const name = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuario';
+  const name = user.full_name || user.email?.split('@')[0] || 'Usuario';
   const avatar = name.charAt(0).toUpperCase();
   const userNameEl = document.getElementById('userName');
   const userAvatarEl = document.getElementById('userAvatar');
@@ -95,9 +91,9 @@ function applyRoleUI(role) {
 
   // Role badge
   const roleLabels = {
-    worker: ' Trabajador',
-    supervisor: ' Supervisor',
-    admin: ' Admin',
+    worker: 'Trabajador',
+    supervisor: 'Supervisor',
+    admin: 'Admin',
   };
   const roleBadgeClasses = {
     worker: 'role-worker',
@@ -158,7 +154,8 @@ function setupAuthListeners() {
     try {
       const email = document.getElementById('loginEmail').value;
       const password = document.getElementById('loginPassword').value;
-      await login(email, password);
+      const data = await login(email, password);
+      showApp(data.user);
     } catch (err) {
       showAuthError('loginError', translateAuthError(err.message));
     } finally {
@@ -178,15 +175,7 @@ function setupAuthListeners() {
       const email = document.getElementById('registerEmail').value;
       const password = document.getElementById('registerPassword').value;
       const data = await register(name, email, password);
-
-      // If email confirmation is required
-      if (data.user && !data.session) {
-        const successEl = document.getElementById('registerSuccess');
-        if (successEl) {
-          successEl.textContent = '✅ Cuenta creada. Revisa tu email para confirmar tu cuenta.';
-          successEl.style.display = 'block';
-        }
-      }
+      showApp(data.user);
     } catch (err) {
       showAuthError('registerError', translateAuthError(err.message));
     } finally {
@@ -198,6 +187,7 @@ function setupAuthListeners() {
   document.getElementById('logoutBtn')?.addEventListener('click', async () => {
     if (isRunning) await stopDetection();
     await logout();
+    showAuth();
   });
 }
 
@@ -229,11 +219,11 @@ function clearAuthErrors() {
 }
 
 function translateAuthError(msg) {
+  if (msg.includes('Credenciales incorrectas')) return 'Email o contraseña incorrectos';
+  if (msg.includes('ya está registrado')) return 'Este email ya está registrado';
   if (msg.includes('Invalid login credentials')) return 'Email o contraseña incorrectos';
-  if (msg.includes('Email not confirmed')) return 'Debes confirmar tu email antes de iniciar sesión';
-  if (msg.includes('User already registered')) return 'Este email ya está registrado';
   if (msg.includes('Password should be at least')) return 'La contraseña debe tener al menos 6 caracteres';
-  if (msg.includes('Unable to validate email')) return 'Email no válido';
+  if (msg.includes('value is not a valid email')) return 'Email no válido';
   return msg;
 }
 
@@ -563,12 +553,12 @@ function setupDetectionListeners() {
   els.startBtn?.addEventListener('click', startDetection);
   els.stopBtn?.addEventListener('click', stopDetection);
 
-  // Alert callback – also record events to Supabase
+  // Alert callback – record events to backend
   onAlert((entry) => {
     addAlertToList(entry);
     updateStats(getAlertCounts());
     // Persist event
-    recordEvent(entry.type, { text: entry.text });
+    recordEventAndCount(entry.type, { text: entry.text });
   });
 }
 

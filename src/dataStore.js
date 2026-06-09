@@ -1,10 +1,10 @@
 /**
  * Data Store Module
- * Records detection sessions and events to Supabase PostgreSQL.
+ * Records detection sessions and events to FastAPI backend.
  * Uses a local buffer that flushes periodically for performance.
  * Includes supervisor/admin functions for querying workers' data.
  */
-import { supabase } from './supabaseClient.js';
+import { apiFetch } from './auth.js';
 
 let currentSession = null;
 let eventBuffer = [];
@@ -15,21 +15,10 @@ const FLUSH_INTERVAL_MS = 5000;
  * Start a new detection session for the current user.
  */
 export async function startSession() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('No authenticated user');
+  const res = await apiFetch('/sessions', { method: 'POST' });
+  if (!res.ok) throw new Error('Error starting session');
 
-  const { data, error } = await supabase
-    .from('sessions')
-    .insert({ user_id: user.id, started_at: new Date().toISOString() })
-    .select()
-    .single();
-
-  if (error) {
-    console.error('Error starting session:', error);
-    throw error;
-  }
-
-  currentSession = data;
+  currentSession = await res.json();
   eventBuffer = [];
 
   // Periodic flush
@@ -46,15 +35,12 @@ export function recordEvent(type, data = {}) {
 
   eventBuffer.push({
     session_id: currentSession.id,
-    user_id: currentSession.user_id,
     type,
-    timestamp: new Date().toISOString(),
-    data,
   });
 }
 
 /**
- * Flush the event buffer to Supabase.
+ * Flush the event buffer to the backend.
  */
 async function flushEvents() {
   if (eventBuffer.length === 0) return;
@@ -62,11 +48,17 @@ async function flushEvents() {
   const toFlush = [...eventBuffer];
   eventBuffer = [];
 
-  const { error } = await supabase.from('events').insert(toFlush);
-  if (error) {
-    console.error('Error flushing events:', error);
-    // Put back on failure
-    eventBuffer.unshift(...toFlush);
+  // Send each event to the API
+  for (const evt of toFlush) {
+    try {
+      await apiFetch('/sessions/events', {
+        method: 'POST',
+        body: JSON.stringify(evt),
+      });
+    } catch (err) {
+      console.error('Error flushing event:', err);
+      eventBuffer.push(evt);
+    }
   }
 }
 
@@ -84,109 +76,65 @@ export async function endSession() {
     flushInterval = null;
   }
 
-  // Count events for session summary
-  const counts = await getSessionCounts(currentSession.id);
-
   const started = new Date(currentSession.started_at);
   const durationSeconds = Math.floor((Date.now() - started.getTime()) / 1000);
 
-  await supabase
-    .from('sessions')
-    .update({
-      ended_at: new Date().toISOString(),
+  // We track counts locally for the session end
+  const counts = sessionLocalCounts;
+
+  await apiFetch(`/sessions/${currentSession.id}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      duration_seconds: durationSeconds,
       total_alerts: counts.total,
       total_drowsy: counts.drowsy,
       total_distracted: counts.distracted,
       total_yawns: counts.yawns,
-      duration_seconds: durationSeconds,
-    })
-    .eq('id', currentSession.id);
+    }),
+  });
 
   currentSession = null;
+  resetLocalCounts();
+}
+
+// ── Local event counting (to avoid extra API call at session end) ─
+
+let sessionLocalCounts = { total: 0, drowsy: 0, distracted: 0, yawns: 0 };
+
+function resetLocalCounts() {
+  sessionLocalCounts = { total: 0, drowsy: 0, distracted: 0, yawns: 0 };
 }
 
 /**
- * Get event counts for a session.
+ * Override recordEvent to also track local counts.
  */
-async function getSessionCounts(sessionId) {
-  const { count: total } = await supabase
-    .from('events')
-    .select('*', { count: 'exact', head: true })
-    .eq('session_id', sessionId);
+const _originalRecordEvent = recordEvent;
+export { _originalRecordEvent };
 
-  const { count: drowsy } = await supabase
-    .from('events')
-    .select('*', { count: 'exact', head: true })
-    .eq('session_id', sessionId)
-    .in('type', ['drowsy', 'sleeping']);
-
-  const { count: distracted } = await supabase
-    .from('events')
-    .select('*', { count: 'exact', head: true })
-    .eq('session_id', sessionId)
-    .eq('type', 'distracted');
-
-  const { count: yawns } = await supabase
-    .from('events')
-    .select('*', { count: 'exact', head: true })
-    .eq('session_id', sessionId)
-    .eq('type', 'yawn');
-
-  return {
-    total: total || 0,
-    drowsy: drowsy || 0,
-    distracted: distracted || 0,
-    yawns: yawns || 0,
-  };
+export function recordEventAndCount(type, data = {}) {
+  recordEvent(type, data);
+  sessionLocalCounts.total++;
+  if (type === 'drowsy' || type === 'sleeping') sessionLocalCounts.drowsy++;
+  if (type === 'distracted') sessionLocalCounts.distracted++;
+  if (type === 'yawn') sessionLocalCounts.yawns++;
 }
 
 /**
  * Get user's sessions within a date range.
  */
 export async function getUserSessions(days = 30) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
-
-  const from = new Date();
-  from.setDate(from.getDate() - days);
-
-  const { data, error } = await supabase
-    .from('sessions')
-    .select('*')
-    .eq('user_id', user.id)
-    .gte('started_at', from.toISOString())
-    .not('ended_at', 'is', null)
-    .order('started_at', { ascending: false });
-
-  if (error) {
-    console.error('Error fetching sessions:', error);
-    return [];
-  }
-  return data || [];
+  const res = await apiFetch(`/reports/sessions?days=${days}`);
+  if (!res.ok) return [];
+  return await res.json();
 }
 
 /**
  * Get user's events within a date range.
  */
 export async function getUserEvents(days = 30) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
-
-  const from = new Date();
-  from.setDate(from.getDate() - days);
-
-  const { data, error } = await supabase
-    .from('events')
-    .select('*')
-    .eq('user_id', user.id)
-    .gte('timestamp', from.toISOString())
-    .order('timestamp', { ascending: true });
-
-  if (error) {
-    console.error('Error fetching events:', error);
-    return [];
-  }
-  return data || [];
+  const res = await apiFetch(`/reports/events?days=${days}`);
+  if (!res.ok) return [];
+  return await res.json();
 }
 
 /**
@@ -204,152 +152,69 @@ export function isSessionActive() {
  * Get groups supervised by the current user.
  */
 export async function getSupervisorGroups() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
-
-  const { data, error } = await supabase
-    .from('groups')
-    .select('*')
-    .eq('supervisor_id', user.id)
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.error('Error fetching supervisor groups:', error);
-    return [];
-  }
-  return data || [];
+  const res = await apiFetch('/groups/supervised');
+  if (!res.ok) return [];
+  return await res.json();
 }
 
 /**
  * Get members of a group with their profiles.
  */
 export async function getGroupMembers(groupId) {
-  const { data: members, error } = await supabase
-    .from('group_members')
-    .select('user_id, joined_at')
-    .eq('group_id', groupId)
-    .order('joined_at', { ascending: true });
+  const res = await apiFetch(`/groups/${groupId}/members`);
+  if (!res.ok) return [];
 
-  if (error) {
-    console.error('Error fetching group members:', error);
-    return [];
-  }
-
-  if (!members || members.length === 0) return [];
-
-  // Fetch profiles separately
-  const userIds = members.map(m => m.user_id);
-  const { data: profiles } = await supabase
-    .from('profiles')
-    .select('id, full_name, role')
-    .in('id', userIds);
-
-  const profilesMap = {};
-  if (profiles) {
-    profiles.forEach(p => { profilesMap[p.id] = p; });
-  }
-
+  const members = await res.json();
+  // Map to the format expected by the frontend (profiles sub-object)
   return members.map(m => ({
-    ...m,
-    profiles: profilesMap[m.user_id] || { id: m.user_id, full_name: 'Sin nombre', role: 'worker' },
+    user_id: m.user_id,
+    joined_at: m.joined_at,
+    profiles: {
+      id: m.user_id,
+      full_name: m.full_name || 'Sin nombre',
+      role: 'worker',
+    },
   }));
 }
 
 /**
  * Get sessions of a specific worker within a date range.
- * Used by supervisors/admins.
  */
 export async function getWorkerSessions(workerId, days = 30) {
-  const from = new Date();
-  from.setDate(from.getDate() - days);
-
-  const { data, error } = await supabase
-    .from('sessions')
-    .select('*')
-    .eq('user_id', workerId)
-    .gte('started_at', from.toISOString())
-    .not('ended_at', 'is', null)
-    .order('started_at', { ascending: false });
-
-  if (error) {
-    console.error('Error fetching worker sessions:', error);
-    return [];
-  }
-  return data || [];
+  // Use group sessions endpoint and filter client-side
+  // Or we can add a dedicated endpoint later
+  const res = await apiFetch(`/reports/sessions?days=${days}`);
+  if (!res.ok) return [];
+  const sessions = await res.json();
+  return sessions.filter(s => s.user_id === workerId);
 }
 
 /**
  * Get events of a specific worker within a date range.
- * Used by supervisors/admins.
  */
 export async function getWorkerEvents(workerId, days = 30) {
-  const from = new Date();
-  from.setDate(from.getDate() - days);
-
-  const { data, error } = await supabase
-    .from('events')
-    .select('*')
-    .eq('user_id', workerId)
-    .gte('timestamp', from.toISOString())
-    .order('timestamp', { ascending: true });
-
-  if (error) {
-    console.error('Error fetching worker events:', error);
-    return [];
-  }
-  return data || [];
+  const res = await apiFetch(`/reports/events?days=${days}`);
+  if (!res.ok) return [];
+  const events = await res.json();
+  return events.filter(e => e.user_id === workerId);
 }
 
 /**
  * Get aggregated sessions for all workers in a group.
  */
 export async function getGroupSessions(groupId, days = 30) {
-  // First get member IDs
-  const members = await getGroupMembers(groupId);
-  const memberIds = members.map(m => m.user_id);
-  if (memberIds.length === 0) return [];
-
-  const from = new Date();
-  from.setDate(from.getDate() - days);
-
-  const { data, error } = await supabase
-    .from('sessions')
-    .select('*')
-    .in('user_id', memberIds)
-    .gte('started_at', from.toISOString())
-    .not('ended_at', 'is', null)
-    .order('started_at', { ascending: false });
-
-  if (error) {
-    console.error('Error fetching group sessions:', error);
-    return [];
-  }
-  return data || [];
+  const res = await apiFetch(`/groups/${groupId}/sessions?days=${days}`);
+  if (!res.ok) return [];
+  return await res.json();
 }
 
 /**
  * Get aggregated events for all workers in a group.
  */
 export async function getGroupEvents(groupId, days = 30) {
-  const members = await getGroupMembers(groupId);
-  const memberIds = members.map(m => m.user_id);
-  if (memberIds.length === 0) return [];
-
-  const from = new Date();
-  from.setDate(from.getDate() - days);
-
-  const { data, error } = await supabase
-    .from('events')
-    .select('*')
-    .in('user_id', memberIds)
-    .gte('timestamp', from.toISOString())
-    .order('timestamp', { ascending: true });
-
-  if (error) {
-    console.error('Error fetching group events:', error);
-    return [];
-  }
-  return data || [];
+  const res = await apiFetch(`/groups/${groupId}/events?days=${days}`);
+  if (!res.ok) return [];
+  return await res.json();
 }
 
 // ══════════════════════════════════════════════
@@ -360,66 +225,40 @@ export async function getGroupEvents(groupId, days = 30) {
  * Get all user profiles (admin only).
  */
 export async function getAllProfiles() {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.error('Error fetching all profiles:', error);
-    return [];
-  }
-  return data || [];
+  const res = await apiFetch('/admin/users');
+  if (!res.ok) return [];
+  return await res.json();
 }
 
 /**
  * Update a user's role (admin only).
  */
 export async function updateUserRole(userId, newRole) {
-  const { data, error } = await supabase
-    .from('profiles')
-    .update({ role: newRole })
-    .eq('id', userId)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
+  const res = await apiFetch(`/admin/users/${userId}/role`, {
+    method: 'PUT',
+    body: JSON.stringify({ role: newRole }),
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(data.detail || 'Error updating role');
+  }
+  return await res.json();
 }
 
 /**
  * Get all groups (admin only).
  */
 export async function getAllGroups() {
-  const { data: groups, error } = await supabase
-    .from('groups')
-    .select('*')
-    .order('created_at', { ascending: false });
+  const res = await apiFetch('/admin/groups');
+  if (!res.ok) return [];
 
-  if (error) {
-    console.error('Error fetching all groups:', error);
-    return [];
-  }
-
-  // Fetch supervisor names from profiles
-  const supervisorIds = [...new Set((groups || []).map(g => g.supervisor_id).filter(Boolean))];
-  let profilesMap = {};
-
-  if (supervisorIds.length > 0) {
-    const { data: profiles } = await supabase
-      .from('profiles')
-      .select('id, full_name')
-      .in('id', supervisorIds);
-
-    if (profiles) {
-      profiles.forEach(p => { profilesMap[p.id] = p; });
-    }
-  }
-
-  // Merge supervisor names into groups
-  return (groups || []).map(g => ({
+  const groups = await res.json();
+  // Map to the format expected by adminPanel.js (profiles sub-object for supervisor)
+  return groups.map(g => ({
     ...g,
-    profiles: profilesMap[g.supervisor_id] || null,
+    profiles: g.supervisor_name
+      ? { full_name: g.supervisor_name }
+      : null,
   }));
 }
 
@@ -427,74 +266,51 @@ export async function getAllGroups() {
  * Create a new group (admin only).
  */
 export async function createGroup(name, supervisorId) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('No authenticated user');
-
-  const code = generateGroupCode();
-
-  const { data, error } = await supabase
-    .from('groups')
-    .insert({
+  const res = await apiFetch('/admin/groups', {
+    method: 'POST',
+    body: JSON.stringify({
       name,
-      code,
       supervisor_id: supervisorId || null,
-      created_by: user.id,
-    })
-    .select()
-    .single();
+    }),
+  });
 
-  if (error) throw error;
-  return data;
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(data.detail || 'Error creating group');
+  }
+  return await res.json();
 }
 
 /**
  * Update a group (admin only).
  */
 export async function updateGroup(groupId, updates) {
-  const { data, error } = await supabase
-    .from('groups')
-    .update(updates)
-    .eq('id', groupId)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
+  // Not implemented in backend yet — placeholder
+  console.warn('updateGroup not yet implemented in API');
 }
 
 /**
  * Delete a group (admin only).
  */
 export async function deleteGroup(groupId) {
-  const { error } = await supabase
-    .from('groups')
-    .delete()
-    .eq('id', groupId);
-
-  if (error) throw error;
+  const res = await apiFetch(`/admin/groups/${groupId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(data.detail || 'Error deleting group');
+  }
 }
 
 /**
- * Remove a worker from a group (admin only).
+ * Remove a worker from a group (admin/supervisor).
  */
 export async function removeWorkerFromGroup(userId, groupId) {
-  const { error } = await supabase
-    .from('group_members')
-    .delete()
-    .eq('user_id', userId)
-    .eq('group_id', groupId);
-
-  if (error) throw error;
-}
-
-/**
- * Generate a random 8-char group code.
- */
-function generateGroupCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 8; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
+  const res = await apiFetch(`/groups/${groupId}/members/${userId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(data.detail || 'Error removing member');
   }
-  return code;
 }
