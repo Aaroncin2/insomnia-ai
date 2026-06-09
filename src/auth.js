@@ -133,7 +133,7 @@ export async function getSession() {
 
 /**
  * Listen for auth state changes.
- * Since we no longer use Supabase realtime, this is a no-op.
+ * Legacy compatibility stub — no-op.
  * The main.js will call getCurrentUser() on load instead.
  */
 export function onAuthChange(callback) {

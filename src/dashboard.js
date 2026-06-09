@@ -1,6 +1,6 @@
 /**
  * Dashboard Module
- * Renders analytics charts and KPIs using Chart.js + Supabase data.
+ * Renders analytics charts and KPIs using Chart.js + API data.
  */
 import Chart from 'chart.js/auto';
 import { getUserSessions, getUserEvents } from './dataStore.js';
