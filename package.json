@@ -1,8 +1,9 @@
 {
-  "name": "nuevo",
+  "name": "insomnia-ai",
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "description": "Insomnia AI is a real-time face drowsiness and distraction detection system using MediaPipe on the client side and FastAPI on the backend.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -27,6 +28,6 @@
   "bugs": {
     "url": "https://github.com/Aaroncin2/insomnia-ai/issues"
   },
-  "homepage": "https://github.com/Aaroncin2/insomnia-ai#readme",
-  "description": ""
+  "homepage": "https://github.com/Aaroncin2/insomnia-ai#readme"
 }
+

@@ -1,3 +1,4 @@
+import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session as DBSession
 from typing import List
@@ -21,7 +22,7 @@ def create_session(user: models.User = Depends(get_current_user), db: DBSession 
 
 @router.put("/{session_id}", response_model=schemas.SessionOut)
 def end_session(
-    session_id: str,
+    session_id: uuid.UUID,
     data: schemas.SessionEnd,
     user: models.User = Depends(get_current_user),
     db: DBSession = Depends(get_db),

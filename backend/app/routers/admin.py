@@ -1,7 +1,8 @@
 import string
 import random
+import uuid
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session as DBSession
+from sqlalchemy.orm import Session as DBSession, joinedload
 from typing import List
 from .. import models, schemas
 from ..database import get_db
@@ -29,7 +30,7 @@ def list_users(
 
 @router.put("/users/{user_id}/role", response_model=schemas.UserOut)
 def update_role(
-    user_id: str,
+    user_id: uuid.UUID,
     data: schemas.RoleUpdate,
     user: models.User = Depends(require_role("admin")),
     db: DBSession = Depends(get_db),
@@ -60,13 +61,12 @@ def list_groups(
     db: DBSession = Depends(get_db),
 ):
     """List all groups."""
-    groups = db.query(models.Group).order_by(models.Group.created_at).all()
+    groups = db.query(models.Group).options(
+        joinedload(models.Group.supervisor)
+    ).order_by(models.Group.created_at).all()
     result = []
     for g in groups:
-        sup_name = None
-        if g.supervisor_id:
-            sup = db.query(models.User).filter(models.User.id == g.supervisor_id).first()
-            sup_name = sup.full_name if sup else None
+        sup_name = g.supervisor.full_name if g.supervisor else None
         result.append(schemas.GroupOut(
             id=g.id, name=g.name, code=g.code,
             supervisor_id=g.supervisor_id, supervisor_name=sup_name,
@@ -114,7 +114,7 @@ def create_group(
 
 @router.delete("/groups/{group_id}")
 def delete_group(
-    group_id: str,
+    group_id: uuid.UUID,
     user: models.User = Depends(require_role("admin")),
     db: DBSession = Depends(get_db),
 ):

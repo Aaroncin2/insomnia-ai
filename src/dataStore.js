@@ -181,22 +181,18 @@ export async function getGroupMembers(groupId) {
  * Get sessions of a specific worker within a date range.
  */
 export async function getWorkerSessions(workerId, days = 30) {
-  // Use group sessions endpoint and filter client-side
-  // Or we can add a dedicated endpoint later
-  const res = await apiFetch(`/reports/sessions?days=${days}`);
+  const res = await apiFetch(`/reports/sessions?days=${days}&user_id=${workerId}`);
   if (!res.ok) return [];
-  const sessions = await res.json();
-  return sessions.filter(s => s.user_id === workerId);
+  return await res.json();
 }
 
 /**
  * Get events of a specific worker within a date range.
  */
 export async function getWorkerEvents(workerId, days = 30) {
-  const res = await apiFetch(`/reports/events?days=${days}`);
+  const res = await apiFetch(`/reports/events?days=${days}&user_id=${workerId}`);
   if (!res.ok) return [];
-  const events = await res.json();
-  return events.filter(e => e.user_id === workerId);
+  return await res.json();
 }
 
 /**

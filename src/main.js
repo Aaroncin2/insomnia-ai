@@ -15,6 +15,7 @@ import { startSession as startDataSession, endSession as endDataSession, recordE
 import { renderDashboard } from './dashboard.js';
 import { renderSupervisorDashboard, setupSupervisorListeners } from './supervisorDashboard.js';
 import { renderAdminPanel, setupAdminListeners } from './adminPanel.js';
+import { escapeHtml } from './utils.js';
 
 let stream = null;
 let animationId = null;
@@ -354,10 +355,11 @@ async function loadMyGroups() {
 
     list.innerHTML = groups.map(gm => {
       const g = gm.groups;
+      const groupName = escapeHtml(g?.name || 'Grupo');
       return `<div class="my-group-item">
         <div class="my-group-info">
           <span class="group-icon"></span>
-          <span class="my-group-name">${g?.name || 'Grupo'}</span>
+          <span class="my-group-name">${groupName}</span>
         </div>
         <button class="admin-action-btn danger leave-group-btn" data-group-id="${g?.id}" title="Salir del grupo">✕</button>
       </div>`;

@@ -8,6 +8,7 @@
  */
 import Chart from 'chart.js/auto';
 import { getSupervisorGroups, getGroupMembers, getWorkerSessions, getWorkerEvents, getGroupSessions, getGroupEvents } from './dataStore.js';
+import { escapeHtml } from './utils.js';
 
 let charts = {};
 let currentGroupId = null;
@@ -107,8 +108,8 @@ function renderGroupSelector(groups) {
     <button class="supervisor-group-pill ${g.id === currentGroupId ? 'active' : ''}"
             data-group-id="${g.id}">
       <span class="group-icon"></span>
-      <span>${g.name}</span>
-      <span class="group-code-mini">${g.code}</span>
+      <span>${escapeHtml(g.name)}</span>
+      <span class="group-code-mini">${escapeHtml(g.code)}</span>
     </button>
   `).join('');
 
@@ -158,8 +159,8 @@ function renderWorkerCards(members, sessions, events) {
   }
 
   grid.innerHTML = members.map(m => {
-    const name = m.profiles?.full_name || 'Sin nombre';
-    const avatar = name.charAt(0).toUpperCase();
+    const name = escapeHtml(m.profiles?.full_name || 'Sin nombre');
+    const avatar = escapeHtml(name.charAt(0).toUpperCase());
     const workerSessions = sessions.filter(s => s.user_id === m.user_id);
     const workerEvents = events.filter(e => e.user_id === m.user_id);
 
@@ -284,11 +285,12 @@ function renderRiskRanking(members, sessions, events) {
 
   tbody.innerHTML = rankings.map((r, i) => {
     const riskClass = r.total >= 20 ? 'high-risk' : r.total >= 10 ? 'medium-risk' : 'low-risk';
+    const name = escapeHtml(r.name);
     return `<tr class="${riskClass}">
       <td>
         <div class="admin-user-cell">
           <span class="rank-number">#${i + 1}</span>
-          <span>${r.name}</span>
+          <span>${name}</span>
         </div>
       </td>
       <td><span class="badge total">${r.total}</span></td>

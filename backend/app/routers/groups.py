@@ -1,7 +1,8 @@
 import string
 import random
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session as DBSession
+from sqlalchemy.orm import Session as DBSession, joinedload
 from typing import List
 from datetime import datetime, timedelta, timezone
 from .. import models, schemas
@@ -48,6 +49,7 @@ def join_group(
         group_id=member.group_id,
         full_name=user.full_name,
         joined_at=member.joined_at,
+        group_name=group.name,
     )
 
 
@@ -57,18 +59,17 @@ def get_my_groups(
     db: DBSession = Depends(get_db),
 ):
     """Get all groups the current user belongs to."""
-    memberships = db.query(models.GroupMember).filter(
+    memberships = db.query(models.GroupMember).options(
+        joinedload(models.GroupMember.group).joinedload(models.Group.supervisor)
+    ).filter(
         models.GroupMember.user_id == user.id
     ).all()
 
     groups = []
     for m in memberships:
-        group = db.query(models.Group).filter(models.Group.id == m.group_id).first()
+        group = m.group
         if group:
-            sup_name = None
-            if group.supervisor_id:
-                sup = db.query(models.User).filter(models.User.id == group.supervisor_id).first()
-                sup_name = sup.full_name if sup else None
+            sup_name = group.supervisor.full_name if group.supervisor else None
             groups.append(schemas.GroupOut(
                 id=group.id, name=group.name, code=group.code,
                 supervisor_id=group.supervisor_id, supervisor_name=sup_name,
@@ -98,7 +99,7 @@ def get_supervised_groups(
 
 @router.get("/{group_id}/members", response_model=List[schemas.GroupMemberOut])
 def get_group_members(
-    group_id: str,
+    group_id: uuid.UUID,
     user: models.User = Depends(require_role("supervisor", "admin")),
     db: DBSession = Depends(get_db),
 ):
@@ -110,20 +111,22 @@ def get_group_members(
     if user.role != "admin" and group.supervisor_id != user.id:
         raise HTTPException(status_code=403, detail="No tienes acceso a este grupo")
 
-    members = db.query(models.GroupMember).filter(models.GroupMember.group_id == group_id).all()
+    members = db.query(models.GroupMember).options(
+        joinedload(models.GroupMember.user)
+    ).filter(models.GroupMember.group_id == group_id).all()
     result = []
     for m in members:
-        u = db.query(models.User).filter(models.User.id == m.user_id).first()
         result.append(schemas.GroupMemberOut(
             id=m.id, user_id=m.user_id, group_id=m.group_id,
-            full_name=u.full_name if u else None, joined_at=m.joined_at,
+            full_name=m.user.full_name if m.user else None, joined_at=m.joined_at,
+            group_name=group.name,
         ))
     return result
 
 
 @router.get("/{group_id}/sessions", response_model=List[schemas.SessionOut])
 def get_group_sessions(
-    group_id: str,
+    group_id: uuid.UUID,
     days: int = Query(default=7, ge=1, le=90),
     user: models.User = Depends(require_role("supervisor", "admin")),
     db: DBSession = Depends(get_db),
@@ -150,7 +153,7 @@ def get_group_sessions(
 
 @router.get("/{group_id}/events", response_model=List[schemas.EventOut])
 def get_group_events(
-    group_id: str,
+    group_id: uuid.UUID,
     days: int = Query(default=7, ge=1, le=90),
     user: models.User = Depends(require_role("supervisor", "admin")),
     db: DBSession = Depends(get_db),
@@ -177,12 +180,21 @@ def get_group_events(
 
 @router.delete("/{group_id}/members/{user_id}")
 def remove_member(
-    group_id: str,
-    user_id: str,
-    user: models.User = Depends(require_role("supervisor", "admin")),
+    group_id: uuid.UUID,
+    user_id: uuid.UUID,
+    user: models.User = Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ):
     """Remove a member from a group."""
+    # If not supervisor/admin, the user can only remove themselves
+    if user.role not in ["supervisor", "admin"] and user.id != user_id:
+        raise HTTPException(status_code=403, detail="No tienes permiso para remover a este miembro")
+
+    if user.role != "admin" and user.id != user_id:
+        group = db.query(models.Group).filter(models.Group.id == group_id).first()
+        if not group or group.supervisor_id != user.id:
+            raise HTTPException(status_code=403, detail="No tienes acceso a este grupo")
+
     member = db.query(models.GroupMember).filter(
         models.GroupMember.group_id == group_id,
         models.GroupMember.user_id == user_id,

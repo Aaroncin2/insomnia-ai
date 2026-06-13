@@ -1,15 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session as DBSession
 from .. import models, schemas
 from ..database import get_db
 from ..auth import hash_password, verify_password, create_access_token
 from ..dependencies import get_current_user
+from ..limiter import limiter
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=schemas.TokenResponse)
-def register(data: schemas.UserRegister, db: DBSession = Depends(get_db)):
+@limiter.limit("5/minute")
+def register(request: Request, data: schemas.UserRegister, db: DBSession = Depends(get_db)):
     # Check if email exists
     existing = db.query(models.User).filter(models.User.email == data.email).first()
     if existing:
@@ -30,7 +32,8 @@ def register(data: schemas.UserRegister, db: DBSession = Depends(get_db)):
 
 
 @router.post("/login", response_model=schemas.TokenResponse)
-def login(data: schemas.UserLogin, db: DBSession = Depends(get_db)):
+@limiter.limit("5/minute")
+def login(request: Request, data: schemas.UserLogin, db: DBSession = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == data.email).first()
     if not user or not verify_password(data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")

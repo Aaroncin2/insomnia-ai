@@ -3,6 +3,7 @@
  * Renders the admin management interface for users, roles, and groups.
  */
 import { getAllProfiles, updateUserRole, getAllGroups, createGroup, updateGroup, deleteGroup, getGroupMembers, removeWorkerFromGroup } from './dataStore.js';
+import { escapeHtml } from './utils.js';
 
 let cachedProfiles = [];
 let cachedGroups = [];
@@ -48,12 +49,14 @@ function renderUserManagement(profiles) {
   tbody.innerHTML = profiles.map(p => {
     const roleBadge = getRoleBadge(p.role);
     const isAdmin = p.role === 'admin';
+    const fullName = escapeHtml(p.full_name || 'Sin nombre');
+    const avatar = escapeHtml((p.full_name || '?').charAt(0).toUpperCase());
 
     return `<tr data-user-id="${p.id}">
       <td>
         <div class="admin-user-cell">
-          <span class="admin-user-avatar">${(p.full_name || '?').charAt(0).toUpperCase()}</span>
-          <span>${p.full_name || 'Sin nombre'}</span>
+          <span class="admin-user-avatar">${avatar}</span>
+          <span>${fullName}</span>
         </div>
       </td>
       <td>${roleBadge}</td>
@@ -64,7 +67,7 @@ function renderUserManagement(profiles) {
             <option value="supervisor" ${p.role === 'supervisor' ? 'selected' : ''}>Supervisor</option>
           </select>
           <button class="admin-action-btn save-role-btn" data-user-id="${p.id}" title="Guardar rol">Guardar</button>
-        ` : '<span class="admin-protected-badge">Protegido</span>'}}
+        ` : '<span class="admin-protected-badge">Protegido</span>'}
       </td>
     </tr>`;
   }).join('');
@@ -115,7 +118,7 @@ function renderGroupManagement(groups, profiles) {
   const supervisorSelect = document.getElementById('newGroupSupervisor');
   if (supervisorSelect) {
     supervisorSelect.innerHTML = '<option value="">Sin supervisor</option>' +
-      supervisors.map(s => `<option value="${s.id}">${s.full_name || 'Sin nombre'} (${s.role})</option>`).join('');
+      supervisors.map(s => `<option value="${s.id}">${escapeHtml(s.full_name || 'Sin nombre')} (${escapeHtml(s.role)})</option>`).join('');
   }
 
   if (groups.length === 0) {
@@ -124,20 +127,22 @@ function renderGroupManagement(groups, profiles) {
   }
 
   tbody.innerHTML = groups.map(g => {
-    const supervisorName = g.profiles?.full_name || 'No asignado';
+    const supervisorName = escapeHtml(g.profiles?.full_name || 'No asignado');
+    const groupName = escapeHtml(g.name);
+    const groupCode = escapeHtml(g.code);
     return `<tr data-group-id="${g.id}">
       <td>
         <div class="admin-group-name">
           <span class="group-icon"></span>
-          <span>${g.name}</span>
+          <span>${groupName}</span>
         </div>
       </td>
       <td>
-        <span class="group-code-badge" title="Click para copiar" data-code="${g.code}">${g.code}</span>
+        <span class="group-code-badge" title="Click para copiar" data-code="${groupCode}">${groupCode}</span>
       </td>
       <td>${supervisorName}</td>
       <td>
-        <button class="admin-action-btn view-members-btn" data-group-id="${g.id}" data-group-name="${g.name}" title="Ver miembros">Ver</button>
+        <button class="admin-action-btn view-members-btn" data-group-id="${g.id}" data-group-name="${groupName}" title="Ver miembros">Ver</button>
         <button class="admin-action-btn delete-group-btn danger" data-group-id="${g.id}" title="Eliminar grupo">Eliminar</button>
       </td>
     </tr>`;
@@ -204,12 +209,13 @@ async function showGroupMembers(groupId, groupName) {
     }
 
     list.innerHTML = members.map(m => {
-      const name = m.profiles?.full_name || 'Sin nombre';
+      const name = escapeHtml(m.profiles?.full_name || 'Sin nombre');
+      const avatar = escapeHtml(name.charAt(0).toUpperCase());
       const joinDate = new Date(m.joined_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
 
       return `<div class="group-member-item">
         <div class="group-member-info">
-          <span class="group-member-avatar">${name.charAt(0).toUpperCase()}</span>
+          <span class="group-member-avatar">${avatar}</span>
           <div>
             <div class="group-member-name">${name}</div>
             <div class="group-member-joined">Unido: ${joinDate}</div>
@@ -217,7 +223,7 @@ async function showGroupMembers(groupId, groupName) {
         </div>
         <button class="admin-action-btn danger remove-member-btn" data-user-id="${m.user_id}" data-group-id="${groupId}" title="Remover del grupo">Quitar</button>
       </div>`;
-    }).join('');
+    }).join('');;
 
     // Bind remove
     list.querySelectorAll('.remove-member-btn').forEach(btn => {

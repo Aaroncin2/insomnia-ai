@@ -107,6 +107,7 @@ class GroupMemberOut(BaseModel):
     user_id: uuid.UUID
     group_id: uuid.UUID
     full_name: Optional[str] = None
+    group_name: Optional[str] = None
     joined_at: datetime
 
     class Config:
