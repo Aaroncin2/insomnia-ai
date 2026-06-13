@@ -36,7 +36,7 @@ def update_role(
     db: DBSession = Depends(get_db),
 ):
     """Update a user's role. Cannot change own role."""
-    if str(user.id) == user_id:
+    if user.id == user_id:
         raise HTTPException(status_code=400, detail="No puedes cambiar tu propio rol")
 
     valid_roles = {"worker", "supervisor", "admin"}

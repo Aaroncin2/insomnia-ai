@@ -209,8 +209,9 @@ async function showGroupMembers(groupId, groupName) {
     }
 
     list.innerHTML = members.map(m => {
-      const name = escapeHtml(m.profiles?.full_name || 'Sin nombre');
-      const avatar = escapeHtml(name.charAt(0).toUpperCase());
+      const rawName = m.profiles?.full_name || 'Sin nombre';
+      const name = escapeHtml(rawName);
+      const avatar = escapeHtml(rawName.charAt(0).toUpperCase());
       const joinDate = new Date(m.joined_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
 
       return `<div class="group-member-item">

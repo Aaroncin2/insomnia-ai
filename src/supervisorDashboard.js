@@ -159,8 +159,9 @@ function renderWorkerCards(members, sessions, events) {
   }
 
   grid.innerHTML = members.map(m => {
-    const name = escapeHtml(m.profiles?.full_name || 'Sin nombre');
-    const avatar = escapeHtml(name.charAt(0).toUpperCase());
+    const rawName = m.profiles?.full_name || 'Sin nombre';
+    const name = escapeHtml(rawName);
+    const avatar = escapeHtml(rawName.charAt(0).toUpperCase());
     const workerSessions = sessions.filter(s => s.user_id === m.user_id);
     const workerEvents = events.filter(e => e.user_id === m.user_id);
 
