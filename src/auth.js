@@ -131,15 +131,7 @@ export async function getSession() {
   return { access_token: token };
 }
 
-/**
- * Listen for auth state changes.
- * Legacy compatibility stub — no-op.
- * The main.js will call getCurrentUser() on load instead.
- */
-export function onAuthChange(callback) {
-  // No-op — auth state is checked on page load
-  return { data: { subscription: { unsubscribe: () => {} } } };
-}
+
 
 // ── Profile & Roles ─────────────────────────────────
 

@@ -10,7 +10,7 @@ import { analyzeDrowsiness, updateDrowsinessConfig, resetDrowsinessState } from 
 import { analyzeDistraction, updateDistractionConfig, resetDistractionState } from './distractionDetector.js';
 import { initAlertSystem, triggerAlert, onAlert, getAlertCounts, resetAlerts, setSoundEnabled, setAlertVolume } from './alertSystem.js';
 import { initUI, getElements, showOverlay, hideOverlay, setConnectionStatus, drawLandmarks, updateMetrics, updateState, resetStateTimer, updateStateTimer, updateStats, addAlertToList, startSessionTimer, stopSessionTimer, clearAlertList } from './ui.js';
-import { login, register, logout, getCurrentUser, getSession, onAuthChange, getUserProfile, joinGroup, getMyGroups, leaveGroup } from './auth.js';
+import { login, register, logout, getCurrentUser, getSession, getUserProfile, joinGroup, getMyGroups, leaveGroup } from './auth.js';
 import { startSession as startDataSession, endSession as endDataSession, recordEvent, recordEventAndCount } from './dataStore.js';
 import { renderDashboard } from './dashboard.js';
 import { renderSupervisorDashboard, setupSupervisorListeners } from './supervisorDashboard.js';
