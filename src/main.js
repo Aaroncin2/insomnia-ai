@@ -8,7 +8,7 @@ import './styles.css';
 import { initFaceDetector, detectFace } from './faceDetector.js';
 import { analyzeDrowsiness, updateDrowsinessConfig, resetDrowsinessState } from './drowsinessDetector.js';
 import { analyzeDistraction, updateDistractionConfig, resetDistractionState } from './distractionDetector.js';
-import { initAlertSystem, triggerAlert, onAlert, getAlertCounts, resetAlerts, setSoundEnabled, setAlertVolume } from './alertSystem.js';
+import { initAlertSystem, triggerAlert, onAlert, getAlertCounts, resetAlerts, setNotificationsEnabled } from './alertSystem.js';
 import { initUI, getElements, showOverlay, hideOverlay, setConnectionStatus, drawLandmarks, updateMetrics, updateState, resetStateTimer, updateStateTimer, updateStats, addAlertToList, startSessionTimer, stopSessionTimer, clearAlertList } from './ui.js';
 import { login, register, logout, getCurrentUser, getSession, getUserProfile, joinGroup, getMyGroups, leaveGroup } from './auth.js';
 import { startSession as startDataSession, endSession as endDataSession, recordEvent, recordEventAndCount } from './dataStore.js';
@@ -419,16 +419,58 @@ function stopCamera() {
 let backgroundTimerId = null;
 const BACKGROUND_FPS = 10; // slower in background to save CPU
 
+// Web Worker timer — immune to browser throttling in background tabs.
+// Browsers aggressively throttle setTimeout/setInterval in hidden tabs
+// (1s+ minimum, or fully paused after 5 min), but Worker timers run normally.
+let timerWorker = null;
+
+function getTimerWorker() {
+  if (!timerWorker) {
+    const code = `self.onmessage=function(e){if(e.data==='stop')return;setTimeout(()=>self.postMessage('tick'),e.data)};`;
+    timerWorker = new Worker(URL.createObjectURL(new Blob([code], { type: 'application/javascript' })));
+  }
+  return timerWorker;
+}
+
+function destroyTimerWorker() {
+  if (timerWorker) {
+    timerWorker.terminate();
+    timerWorker = null;
+  }
+}
+
 function scheduleNextFrame() {
   if (!isRunning) return;
   if (document.hidden) {
-    // Tab is hidden: use setTimeout (not throttled by browser)
-    backgroundTimerId = setTimeout(detectionLoop, 1000 / BACKGROUND_FPS);
+    // Tab is hidden: use Web Worker timer (NOT throttled by browser)
+    const worker = getTimerWorker();
+    worker.onmessage = () => { if (isRunning) detectionLoop(); };
+    worker.postMessage(1000 / BACKGROUND_FPS);
   } else {
-    // Tab is visible: use requestAnimationFrame (smooth 60fps)
+    // Tab is visible: use requestAnimationFrame (smooth ~60fps)
     animationId = requestAnimationFrame(detectionLoop);
   }
 }
+
+// Handle transitions between foreground ↔ background cleanly
+document.addEventListener('visibilitychange', () => {
+  if (!isRunning) return;
+
+  if (document.hidden) {
+    // Tab just went to background — cancel rAF, switch to Worker timer
+    if (animationId) {
+      cancelAnimationFrame(animationId);
+      animationId = null;
+    }
+    console.log('[Insomnia AI] Tab hidden — switching to background Worker timer');
+    scheduleNextFrame();
+  } else {
+    // Tab just came back — stop Worker timer, switch to rAF
+    if (timerWorker) timerWorker.postMessage('stop');
+    console.log('[Insomnia AI] Tab visible — switching to requestAnimationFrame');
+    scheduleNextFrame();
+  }
+});
 
 function detectionLoop() {
   const els = getElements();
@@ -520,6 +562,7 @@ async function stopDetection() {
   if (animationId) cancelAnimationFrame(animationId);
   if (backgroundTimerId) clearTimeout(backgroundTimerId);
   backgroundTimerId = null;
+  destroyTimerWorker();
   stopCamera();
   setConnectionStatus(false);
   if (els.startBtn) els.startBtn.style.display = 'flex';
@@ -554,6 +597,13 @@ function setupDetectionListeners() {
   const els = getElements();
   els.startBtn?.addEventListener('click', startDetection);
   els.stopBtn?.addEventListener('click', stopDetection);
+
+  // Save active session if tab is closed or reloaded
+  window.addEventListener('beforeunload', () => {
+    if (isRunning) {
+      endDataSession();
+    }
+  });
 
   // Alert callback – record events to backend
   onAlert((entry) => {
@@ -591,6 +641,5 @@ function setupSettingsListeners() {
   bind('yawThreshold', 'yawThresholdValue', v => v + '°', v => updateDistractionConfig({ yawThreshold: parseInt(v) }));
   bind('pitchThreshold', 'pitchThresholdValue', v => v + '°', v => updateDistractionConfig({ pitchThreshold: parseInt(v) }));
   bind('distractionFrames', 'distractionFramesValue', v => v, v => updateDistractionConfig({ consecutiveFrames: parseInt(v) }));
-  bind('alertVolume', 'alertVolumeValue', v => Math.round(v * 100) + '%', v => setAlertVolume(parseFloat(v)));
-  els.soundEnabled?.addEventListener('change', (e) => setSoundEnabled(e.target.checked));
+  els.soundEnabled?.addEventListener('change', (e) => setNotificationsEnabled(e.target.checked));
 }

@@ -11,6 +11,10 @@ let eventBuffer = [];
 let flushInterval = null;
 const FLUSH_INTERVAL_MS = 5000;
 
+// Local start timestamp — reliable fallback for duration calculation
+// (avoids timezone parsing issues with server-side started_at)
+let sessionStartTime = null;
+
 /**
  * Start a new detection session for the current user.
  */
@@ -20,6 +24,10 @@ export async function startSession() {
 
   currentSession = await res.json();
   eventBuffer = [];
+  sessionStartTime = Date.now();
+
+  // Reset local counts for the new session
+  resetLocalCounts();
 
   // Periodic flush
   flushInterval = setInterval(flushEvents, FLUSH_INTERVAL_MS);
@@ -76,11 +84,19 @@ export async function endSession() {
     flushInterval = null;
   }
 
-  const started = new Date(currentSession.started_at);
-  const durationSeconds = Math.floor((Date.now() - started.getTime()) / 1000);
+  // Calculate duration using local timestamp (avoids timezone parsing issues)
+  const durationSeconds = sessionStartTime
+    ? Math.max(0, Math.floor((Date.now() - sessionStartTime) / 1000))
+    : 0;
 
   // We track counts locally for the session end
   const counts = sessionLocalCounts;
+
+  console.log('[Insomnia AI] Ending session:', {
+    id: currentSession.id,
+    durationSeconds,
+    counts: { ...counts },
+  });
 
   await apiFetch(`/sessions/${currentSession.id}`, {
     method: 'PUT',
@@ -94,6 +110,7 @@ export async function endSession() {
   });
 
   currentSession = null;
+  sessionStartTime = null;
   resetLocalCounts();
 }
 
@@ -118,6 +135,8 @@ export function recordEventAndCount(type, data = {}) {
   if (type === 'distracted') sessionLocalCounts.distracted++;
   if (type === 'yawn') sessionLocalCounts.yawns++;
 }
+
+
 
 /**
  * Get user's sessions within a date range.

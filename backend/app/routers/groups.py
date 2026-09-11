@@ -142,11 +142,14 @@ def get_group_sessions(
         models.GroupMember.group_id == group_id
     ).all()]
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    cutoff = datetime.utcnow() - timedelta(days=days)
     sessions = db.query(models.Session).filter(
         models.Session.user_id.in_(member_ids),
         models.Session.started_at >= cutoff,
     ).order_by(models.Session.started_at.desc()).all()
+
+    from .reports import _sync_session_stats
+    _sync_session_stats(sessions, db)
 
     return [schemas.SessionOut.model_validate(s) for s in sessions]
 
