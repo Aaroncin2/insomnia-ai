@@ -5,7 +5,6 @@ psycopg2-binary
 python-jose[cryptography]
 bcrypt
 python-dotenv
-alembic
 pydantic-settings
 slowapi
 
