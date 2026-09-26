@@ -329,3 +329,62 @@ export async function removeWorkerFromGroup(userId, groupId) {
     throw new Error(data.detail || 'Error removing member');
   }
 }
+
+// ══════════════════════════════════════════════
+//  SETTINGS / THRESHOLDS API
+// ══════════════════════════════════════════════
+
+/**
+ * Get effective threshold settings for current user.
+ */
+export async function getMySettings() {
+  const res = await apiFetch('/settings/my-settings');
+  if (!res.ok) return null;
+  return await res.json();
+}
+
+/**
+ * Save settings for current supervisor/admin.
+ */
+export async function saveMySettings(settingsData) {
+  const res = await apiFetch('/settings/my-settings', {
+    method: 'PUT',
+    body: JSON.stringify(settingsData),
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(data.detail || 'Error guardando ajustes');
+  }
+  return await res.json();
+}
+
+/**
+ * Save settings for a specific group (supervisor/admin).
+ */
+export async function saveGroupSettings(groupId, settingsData) {
+  const res = await apiFetch(`/settings/group/${groupId}`, {
+    method: 'PUT',
+    body: JSON.stringify(settingsData),
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(data.detail || 'Error guardando ajustes de grupo');
+  }
+  return await res.json();
+}
+
+/**
+ * Save settings for a specific worker user (supervisor/admin).
+ */
+export async function saveUserSettings(userId, settingsData) {
+  const res = await apiFetch(`/settings/user/${userId}`, {
+    method: 'PUT',
+    body: JSON.stringify(settingsData),
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(data.detail || 'Error guardando ajustes de usuario');
+  }
+  return await res.json();
+}
+

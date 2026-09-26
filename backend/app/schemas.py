@@ -131,3 +131,15 @@ class ReportSummary(BaseModel):
     total_sessions: int
     total_time_seconds: int
     avg_alerts_per_session: float
+
+
+# ── Settings ─────────────────────────────────────────
+
+class ThresholdSettings(BaseModel):
+    earThreshold: float = 0.25
+    earConsecutiveFrames: int = 20
+    marThreshold: float = 0.60
+    yawThreshold: int = 25
+    pitchThreshold: int = 20
+    distractionConsecutiveFrames: int = 15
+

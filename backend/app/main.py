@@ -3,10 +3,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy import text
 from .database import engine, Base
 from .config import get_settings
 from .limiter import limiter
-from .routers import auth_router, sessions, reports, groups, admin
+from .routers import auth_router, sessions, reports, groups, admin, settings_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -27,6 +28,15 @@ if settings.JWT_SECRET == DEFAULT_UNSAFE_SECRET or len(settings.JWT_SECRET) < 16
 
 # Create all tables
 Base.metadata.create_all(bind=engine)
+
+# Ensure settings columns exist on pre-existing database tables
+try:
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS settings VARCHAR;"))
+        conn.execute(text("ALTER TABLE groups ADD COLUMN IF NOT EXISTS settings VARCHAR;"))
+        conn.commit()
+except Exception as err:
+    logger.info(f"Database settings column check: {err}")
 
 app = FastAPI(
     title="Insomnia AI API",
@@ -54,6 +64,7 @@ app.include_router(sessions.router)
 app.include_router(reports.router)
 app.include_router(groups.router)
 app.include_router(admin.router)
+app.include_router(settings_router.router)
 
 
 @app.get("/")

@@ -2246,3 +2246,50 @@ input[type="range"]::-moz-range-thumb {
     display: none;
   }
 }
+
+/* ========================================
+   Threshold Settings & Role Lock Styling
+   ======================================== */
+
+.settings-role-banner {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.settings-role-banner.worker-lock {
+  background: rgba(234, 179, 8, 0.1);
+  border: 1px solid rgba(234, 179, 8, 0.3);
+  color: var(--yellow);
+}
+
+.settings-role-banner.supervisor-edit {
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  color: var(--accent-primary);
+}
+
+input[type="range"]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+input[type="range"]:disabled::-webkit-slider-thumb {
+  background: var(--text-muted);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.save-settings-btn {
+  width: 100%;
+  padding: 12px;
+  font-size: 0.9rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+

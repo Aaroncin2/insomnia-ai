@@ -14,6 +14,7 @@ class User(Base):
     full_name = Column(String, nullable=True)
     hashed_password = Column(String, nullable=False)
     role = Column(String, default="worker")  # worker | supervisor | admin
+    settings = Column(String, nullable=True)  # JSON string of thresholds
     created_at = Column(DateTime, default=func.now())
 
     sessions = relationship("Session", back_populates="user")
@@ -58,6 +59,7 @@ class Group(Base):
     code = Column(String(8), unique=True, nullable=False, index=True)
     supervisor_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    settings = Column(String, nullable=True)  # JSON string of group thresholds
     created_at = Column(DateTime, default=func.now())
 
     supervisor = relationship("User", foreign_keys=[supervisor_id])

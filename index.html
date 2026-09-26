@@ -571,6 +571,9 @@
             <button id="closeSettingsBtn" class="icon-btn">✕</button>
           </div>
           <div class="settings-body">
+            <!-- Role Notice Banner -->
+            <div id="settingsRoleBanner" class="settings-role-banner" style="display:none;"></div>
+
             <!-- Join Group Button (workers only) -->
             <div class="setting-group" id="settingsGroupSection">
               <h4> Grupo de Trabajo</h4>
@@ -624,8 +627,19 @@
                 </div>
               </div>
             </div>
+
+            <!-- Save Settings Button (Supervisor / Admin only) -->
+            <div class="setting-group" id="saveSettingsGroup" style="display:none;">
+              <button id="saveSettingsBtn" class="auth-btn primary-btn save-settings-btn">
+                <span class="auth-btn-text">💾 Guardar Ajustes en la BD</span>
+                <span class="auth-btn-loading" style="display:none;"> Guardando...</span>
+              </button>
+              <div class="auth-success" id="saveSettingsSuccess" style="display:none;"></div>
+              <div class="auth-error" id="saveSettingsError" style="display:none;"></div>
+            </div>
+
             <div class="setting-group">
-              <h4>🔔 Notificaciones</h4>
+              <h4> Notificaciones</h4>
               <div class="setting-row">
                 <label for="soundEnabled">Notificaciones habilitadas</label>
                 <div class="setting-control">

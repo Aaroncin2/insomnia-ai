@@ -11,7 +11,7 @@ import { analyzeDistraction, updateDistractionConfig, resetDistractionState } fr
 import { initAlertSystem, triggerAlert, onAlert, getAlertCounts, resetAlerts, setNotificationsEnabled } from './alertSystem.js';
 import { initUI, getElements, showOverlay, hideOverlay, setConnectionStatus, drawLandmarks, updateMetrics, updateState, resetStateTimer, updateStateTimer, updateStats, addAlertToList, startSessionTimer, stopSessionTimer, clearAlertList } from './ui.js';
 import { login, register, logout, getCurrentUser, getSession, getUserProfile, joinGroup, getMyGroups, leaveGroup } from './auth.js';
-import { startSession as startDataSession, endSession as endDataSession, recordEvent, recordEventAndCount } from './dataStore.js';
+import { startSession as startDataSession, endSession as endDataSession, recordEvent, recordEventAndCount, getMySettings, saveMySettings } from './dataStore.js';
 import { renderDashboard } from './dashboard.js';
 import { renderSupervisorDashboard, setupSupervisorListeners } from './supervisorDashboard.js';
 import { renderAdminPanel, setupAdminListeners } from './adminPanel.js';
@@ -80,6 +80,45 @@ async function showApp(user) {
 }
 
 /**
+ * Load user settings from backend DB and apply to detectors and UI sliders.
+ */
+async function loadAndApplyUserSettings() {
+  try {
+    const settings = await getMySettings();
+    if (!settings) return;
+
+    // Apply to detection modules
+    updateDrowsinessConfig({
+      earThreshold: settings.earThreshold,
+      earConsecutiveFrames: settings.earConsecutiveFrames,
+      marThreshold: settings.marThreshold,
+    });
+    updateDistractionConfig({
+      yawThreshold: settings.yawThreshold,
+      pitchThreshold: settings.pitchThreshold,
+      consecutiveFrames: settings.distractionConsecutiveFrames,
+    });
+
+    // Update UI slider values and value labels
+    const setVal = (id, displayId, val, fmt) => {
+      const el = document.getElementById(id);
+      const displayEl = document.getElementById(displayId);
+      if (el) el.value = val;
+      if (displayEl) displayEl.textContent = fmt ? fmt(val) : val;
+    };
+
+    setVal('earThreshold', 'earThresholdValue', settings.earThreshold, v => parseFloat(v).toFixed(2));
+    setVal('earFrames', 'earFramesValue', settings.earConsecutiveFrames, v => v);
+    setVal('marThreshold', 'marThresholdValue', settings.marThreshold, v => parseFloat(v).toFixed(2));
+    setVal('yawThreshold', 'yawThresholdValue', settings.yawThreshold, v => v + '°');
+    setVal('pitchThreshold', 'pitchThresholdValue', settings.pitchThreshold, v => v + '°');
+    setVal('distractionFrames', 'distractionFramesValue', settings.distractionConsecutiveFrames, v => v);
+  } catch (err) {
+    console.error('Error loading threshold settings from DB:', err);
+  }
+}
+
+/**
  * Adapt UI elements based on user role.
  */
 function applyRoleUI(role) {
@@ -89,6 +128,8 @@ function applyRoleUI(role) {
   const navAdmin = document.getElementById('navAdmin');
   const roleBadge = document.getElementById('userRoleBadge');
   const settingsGroupSection = document.getElementById('settingsGroupSection');
+  const settingsRoleBanner = document.getElementById('settingsRoleBanner');
+  const saveSettingsGroup = document.getElementById('saveSettingsGroup');
 
   // Role badge
   const roleLabels = {
@@ -116,6 +157,33 @@ function applyRoleUI(role) {
   if (settingsGroupSection) {
     settingsGroupSection.style.display = (role === 'worker') ? 'block' : 'none';
   }
+
+  // Threshold controls locking / permission
+  const sliderIds = ['earThreshold', 'earFrames', 'marThreshold', 'yawThreshold', 'pitchThreshold', 'distractionFrames'];
+  const isWorker = role === 'worker';
+
+  sliderIds.forEach(id => {
+    const input = document.getElementById(id);
+    if (input) input.disabled = isWorker;
+  });
+
+  if (settingsRoleBanner) {
+    settingsRoleBanner.style.display = 'flex';
+    if (isWorker) {
+      settingsRoleBanner.className = 'settings-role-banner worker-lock';
+      settingsRoleBanner.innerHTML = '🔒 <span>Métricas configuradas por tu supervisor</span>';
+    } else {
+      settingsRoleBanner.className = 'settings-role-banner supervisor-edit';
+      settingsRoleBanner.innerHTML = '🛠️ <span>Modo Edición de Métricas (Supervisor)</span>';
+    }
+  }
+
+  if (saveSettingsGroup) {
+    saveSettingsGroup.style.display = isWorker ? 'none' : 'block';
+  }
+
+  // Load effective threshold settings from DB
+  loadAndApplyUserSettings();
 
   // Setup role-specific listeners
   if (role === 'supervisor' || role === 'admin') {
@@ -642,4 +710,40 @@ function setupSettingsListeners() {
   bind('pitchThreshold', 'pitchThresholdValue', v => v + '°', v => updateDistractionConfig({ pitchThreshold: parseInt(v) }));
   bind('distractionFrames', 'distractionFramesValue', v => v, v => updateDistractionConfig({ consecutiveFrames: parseInt(v) }));
   els.soundEnabled?.addEventListener('change', (e) => setNotificationsEnabled(e.target.checked));
+
+  // Save Settings to Database (Supervisor / Admin)
+  const saveBtn = document.getElementById('saveSettingsBtn');
+  const successEl = document.getElementById('saveSettingsSuccess');
+  const errorEl = document.getElementById('saveSettingsError');
+
+  saveBtn?.addEventListener('click', async () => {
+    if (successEl) { successEl.style.display = 'none'; successEl.textContent = ''; }
+    if (errorEl) { errorEl.style.display = 'none'; errorEl.textContent = ''; }
+
+    setAuthLoading(saveBtn, true);
+
+    const payload = {
+      earThreshold: parseFloat(document.getElementById('earThreshold')?.value || 0.25),
+      earConsecutiveFrames: parseInt(document.getElementById('earFrames')?.value || 20),
+      marThreshold: parseFloat(document.getElementById('marThreshold')?.value || 0.60),
+      yawThreshold: parseInt(document.getElementById('yawThreshold')?.value || 25),
+      pitchThreshold: parseInt(document.getElementById('pitchThreshold')?.value || 20),
+      distractionConsecutiveFrames: parseInt(document.getElementById('distractionFrames')?.value || 15),
+    };
+
+    try {
+      await saveMySettings(payload);
+      if (successEl) {
+        successEl.textContent = '✅ Ajustes guardados exitosamente en la BD';
+        successEl.style.display = 'block';
+      }
+    } catch (err) {
+      if (errorEl) {
+        errorEl.textContent = '❌ ' + err.message;
+        errorEl.style.display = 'block';
+      }
+    } finally {
+      setAuthLoading(saveBtn, false);
+    }
+  });
 }
